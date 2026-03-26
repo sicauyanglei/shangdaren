@@ -1660,7 +1660,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0,0,0,0.7);
+      background: transparent;
       z-index: 2999;
       pointer-events: auto;
     }
@@ -1807,6 +1807,9 @@
     
     .settlement-content {
       color: #fff;
+      max-height: calc(90vh - 200px);
+      overflow-y: auto;
+      padding-right: 10px;
     }
     
     .settlement-rounds {
@@ -1937,6 +1940,8 @@
       margin-top: 20px;
       padding: 15px 30px;
       font-size: 20px;
+      pointer-events: auto;
+      z-index: 10;
     }
   </style>
 </head>

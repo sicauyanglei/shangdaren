@@ -1660,7 +1660,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0,0,0,0.7);
+      background: transparent;
       z-index: 2999;
       pointer-events: auto;
     }
@@ -1807,6 +1807,9 @@
     
     .settlement-content {
       color: #fff;
+      max-height: calc(90vh - 200px);
+      overflow-y: auto;
+      padding-right: 10px;
     }
     
     .settlement-rounds {
@@ -1937,6 +1940,8 @@
       margin-top: 20px;
       padding: 15px 30px;
       font-size: 20px;
+      pointer-events: auto;
+      z-index: 10;
     }
   </style>
 </head>
@@ -1964,6 +1969,10 @@
     <button class="btn btn-primary" style="font-size: 24px; padding: 18px 60px;" onclick="startGame()">
       开始游戏
     </button>
+    <!-- 测试按钮已隐藏 -->
+    <!-- <button class="btn btn-secondary" style="font-size: 16px; padding: 10px 30px; margin-top: 10px;" onclick="startTestFromRound8()">
+      测试第8局
+    </button> -->
   </div>
 
 
@@ -2127,9 +2136,10 @@
   <div id="settlementPage" class="settlement-page">
     <div class="settlement-container">
       <button class="close-btn" onclick="closeSettlement()">×</button>
-      <div class="settlement-title">结算</div>
       <div id="settlementContent" class="settlement-content"></div>
       <button class="btn btn-primary settlement-btn" onclick="closeSettlement()">确认</button>
+      <!-- 导出日志按钮已隐藏 -->
+      <!-- <button class="btn btn-secondary settlement-btn" onclick="exportLogsToFile()">导出日志</button> -->
     </div>
   </div>
   
@@ -2145,6 +2155,28 @@
           <div class="setting-control">
             <input type="range" id="volumeSlider" min="0" max="100" value="100" oninput="updateVolume(this.value)">
             <span id="volumeValue">100%</span>
+          </div>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">游戏难度</label>
+          <div class="setting-control">
+            <label style="margin-right: 15px; cursor: pointer;">
+              <input type="radio" name="difficulty" value="easy" onchange="updateDifficulty('easy')" style="margin-right: 5px;">简单
+            </label>
+            <label style="margin-right: 15px; cursor: pointer;">
+              <input type="radio" name="difficulty" value="medium" onchange="updateDifficulty('medium')" style="margin-right: 5px;">中等
+            </label>
+            <label style="cursor: pointer;">
+              <input type="radio" name="difficulty" value="hard" onchange="updateDifficulty('hard')" style="margin-right: 5px;">困难
+            </label>
+          </div>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">日志管理</label>
+          <div class="setting-control">
+            <span id="logCount">0</span> 条日志
+            <button class="btn btn-secondary" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;" onclick="exportLogsToFile()">导出</button>
+            <button class="btn btn-secondary" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;" onclick="clearLogs()">清除</button>
           </div>
         </div>
       </div>
