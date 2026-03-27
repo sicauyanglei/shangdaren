@@ -1943,6 +1943,56 @@
       pointer-events: auto;
       z-index: 10;
     }
+    
+    .liuju-hands {
+      margin-top: 20px;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    
+    .liuju-player-hand {
+      margin: 10px 0;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+    }
+    
+    .liuju-player-name {
+      font-weight: bold;
+      color: #ffd700;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    
+    .liuju-cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+    }
+    
+    .liuju-card-img {
+      width: 28px;
+      height: auto;
+      border-radius: 3px;
+      box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+    
+    .liuju-card-img.jing {
+      box-shadow: 0 0 4px rgba(211, 47, 47, 0.6);
+    }
+    
+    .liuju-melds {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-left: 12px;
+      padding-left: 8px;
+      border-left: 2px solid rgba(255,255,255,0.3);
+    }
   </style>
 </head>
 <body>
@@ -1968,6 +2018,9 @@
     </div>
     <button class="btn btn-primary" style="font-size: 24px; padding: 18px 60px;" onclick="startGame()">
       开始游戏
+    </button>
+    <button class="btn btn-secondary" style="font-size: 16px; padding: 10px 30px; margin-top: 10px;" onclick="startTestMode()">
+      测试模式
     </button>
   </div>
 
@@ -2132,9 +2185,9 @@
   <div id="settlementPage" class="settlement-page">
     <div class="settlement-container">
       <button class="close-btn" onclick="closeSettlement()">×</button>
-      <div class="settlement-title">结算</div>
       <div id="settlementContent" class="settlement-content"></div>
       <button class="btn btn-primary settlement-btn" onclick="closeSettlement()">确认</button>
+      <button class="btn btn-secondary settlement-btn" onclick="exportLogsToFile()">导出日志</button>
     </div>
   </div>
   
@@ -2150,6 +2203,28 @@
           <div class="setting-control">
             <input type="range" id="volumeSlider" min="0" max="100" value="100" oninput="updateVolume(this.value)">
             <span id="volumeValue">100%</span>
+          </div>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">游戏难度</label>
+          <div class="setting-control">
+            <label style="margin-right: 15px; cursor: pointer;">
+              <input type="radio" name="difficulty" value="easy" onchange="updateDifficulty('easy')" style="margin-right: 5px;">简单
+            </label>
+            <label style="margin-right: 15px; cursor: pointer;">
+              <input type="radio" name="difficulty" value="medium" onchange="updateDifficulty('medium')" style="margin-right: 5px;">中等
+            </label>
+            <label style="cursor: pointer;">
+              <input type="radio" name="difficulty" value="hard" onchange="updateDifficulty('hard')" style="margin-right: 5px;">困难
+            </label>
+          </div>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">日志管理</label>
+          <div class="setting-control">
+            <span id="logCount">0</span> 条日志
+            <button class="btn btn-secondary" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;" onclick="exportLogsToFile()">导出</button>
+            <button class="btn btn-secondary" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;" onclick="clearLogs()">清除</button>
           </div>
         </div>
       </div>
