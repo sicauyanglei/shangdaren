@@ -5466,11 +5466,30 @@ function analyzeHandForTing(hand, melds) {
     }
   }
   
-  let bestResult = allResults[0];
+  let bestResult = null;
+  
   for (const result of allResults) {
-    if (result.pairs.length + Math.floor(result.halfKaos.length / 2) > 
-        bestResult.pairs.length + Math.floor(bestResult.halfKaos.length / 2)) {
-      bestResult = result;
+    if (result.totalGroups === 6 && result.singles.length === 1) {
+      if (!bestResult || result.pairs.length + Math.floor(result.halfKaos.length / 2) > 
+          bestResult.pairs.length + Math.floor(bestResult.halfKaos.length / 2)) {
+        bestResult = result;
+      }
+    }
+    if (result.totalGroups === 5 && result.pairs.length + result.halfKaos.length >= 2) {
+      if (!bestResult || result.pairs.length + Math.floor(result.halfKaos.length / 2) > 
+          bestResult.pairs.length + Math.floor(bestResult.halfKaos.length / 2)) {
+        bestResult = result;
+      }
+    }
+  }
+  
+  if (!bestResult) {
+    bestResult = allResults[0];
+    for (const result of allResults) {
+      if (result.pairs.length + Math.floor(result.halfKaos.length / 2) > 
+          bestResult.pairs.length + Math.floor(bestResult.halfKaos.length / 2)) {
+        bestResult = result;
+      }
     }
   }
   
