@@ -1943,6 +1943,56 @@
       pointer-events: auto;
       z-index: 10;
     }
+    
+    .liuju-hands {
+      margin-top: 20px;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    
+    .liuju-player-hand {
+      margin: 10px 0;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+    }
+    
+    .liuju-player-name {
+      font-weight: bold;
+      color: #ffd700;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    
+    .liuju-cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+    }
+    
+    .liuju-card-img {
+      width: 28px;
+      height: auto;
+      border-radius: 3px;
+      box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+    
+    .liuju-card-img.jing {
+      box-shadow: 0 0 4px rgba(211, 47, 47, 0.6);
+    }
+    
+    .liuju-melds {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-left: 12px;
+      padding-left: 8px;
+      border-left: 2px solid rgba(255,255,255,0.3);
+    }
   </style>
 </head>
 <body>
@@ -1969,10 +2019,9 @@
     <button class="btn btn-primary" style="font-size: 24px; padding: 18px 60px;" onclick="startGame()">
       开始游戏
     </button>
-    <!-- 测试按钮已隐藏 -->
-    <!-- <button class="btn btn-secondary" style="font-size: 16px; padding: 10px 30px; margin-top: 10px;" onclick="startTestFromRound8()">
-      测试第8局
-    </button> -->
+    <button class="btn btn-secondary" style="font-size: 16px; padding: 10px 30px; margin-top: 10px;" onclick="startTestMode()">
+      测试模式
+    </button>
   </div>
 
 
@@ -2138,8 +2187,7 @@
       <button class="close-btn" onclick="closeSettlement()">×</button>
       <div id="settlementContent" class="settlement-content"></div>
       <button class="btn btn-primary settlement-btn" onclick="closeSettlement()">确认</button>
-      <!-- 导出日志按钮已隐藏 -->
-      <!-- <button class="btn btn-secondary settlement-btn" onclick="exportLogsToFile()">导出日志</button> -->
+      <button class="btn btn-secondary settlement-btn" onclick="exportLogsToFile()">导出日志</button>
     </div>
   </div>
   
