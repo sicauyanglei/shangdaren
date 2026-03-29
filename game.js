@@ -7,6 +7,8 @@ let lastSpeakTime = 0;
 // 日志系统 - 避免控制台日志过多导致页面卡死
 const gameLogs = [];
 const MAX_LOGS = 5000;
+const DEBUG_MODE = !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+         (window.innerWidth <= 1024 && 'ontouchstart' in window));
 
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
@@ -32,12 +34,14 @@ function addLog(level, ...args) {
     gameLogs.shift();
   }
   
-  if (level === 'ERROR') {
-    originalConsoleError.apply(console, args);
-  } else if (level === 'WARN') {
-    originalConsoleWarn.apply(console, args);
-  } else {
-    originalConsoleLog.apply(console, args);
+  if (DEBUG_MODE || level === 'ERROR') {
+    if (level === 'ERROR') {
+      originalConsoleError.apply(console, args);
+    } else if (level === 'WARN') {
+      originalConsoleWarn.apply(console, args);
+    } else {
+      originalConsoleLog.apply(console, args);
+    }
   }
 }
 
@@ -76,7 +80,8 @@ function getLogCount() {
 // 系统设置
 let gameSettings = {
   volume: 1.0,
-  difficulty: 'hard' // easy, medium, hard
+  difficulty: 'hard',
+  piaoEnabled: true
 };
 
 // 测试音效函数 - 在控制台输入 testAudio('化') 或 testAudio('八') 来测试
@@ -590,22 +595,27 @@ function setupAudioListeners() {
 
 setupAudioListeners();
 
-// 页面加载时初始化
+function isMobileDevice() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+         (window.innerWidth <= 1024 && 'ontouchstart' in window);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initSpeechSynthesis();
   initAudioContext();
 });
 
 async function lockScreenOrientation() {
+  if (!isMobileDevice()) {
+    return;
+  }
   try {
     if (screen.orientation && screen.orientation.lock) {
       await screen.orientation.lock('landscape');
-      // 屏幕方向锁定后重新初始化音频
       audioInitialized = false;
       initAudioOnUserInteraction();
     }
   } catch (err) {
-    // 屏幕方向锁定不支持，忽略错误
   }
 }
 
@@ -613,10 +623,9 @@ document.addEventListener('DOMContentLoaded', () => {
   lockScreenOrientation();
 });
 
-if (screen.orientation) {
+if (screen.orientation && isMobileDevice()) {
   screen.orientation.addEventListener('change', () => {
     console.log('屏幕方向变化:', screen.orientation.type);
-    // 屏幕方向变化后重新初始化音频
     audioInitialized = false;
     initAudioOnUserInteraction();
   });
@@ -649,6 +658,39 @@ async function releaseWakeLock() {
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible') {
     await requestWakeLock();
+    
+    if (!isMobileDevice()) {
+      return;
+    }
+    
+    const gameContainer = document.querySelector('.game-container');
+    const startScreen = document.getElementById('startScreen');
+    const isGameActive = gameContainer && gameContainer.style.display !== 'none' && 
+                         startScreen && startScreen.classList.contains('hidden');
+    const isStartScreenVisible = startScreen && !startScreen.classList.contains('hidden');
+    
+    if (isGameActive || isStartScreenVisible) {
+      console.log('切回游戏页面，重新进入全屏模式');
+      try {
+        const docEl = document.documentElement;
+        
+        if (!document.fullscreenElement && !document.webkitFullscreenElement && 
+            !document.mozFullScreenElement && !document.msFullscreenElement) {
+          if (docEl.requestFullscreen) {
+            await docEl.requestFullscreen();
+          } else if (docEl.webkitRequestFullscreen) {
+            await docEl.webkitRequestFullscreen();
+          } else if (docEl.mozRequestFullScreen) {
+            await docEl.mozRequestFullScreen();
+          } else if (docEl.msRequestFullscreen) {
+            await docEl.msRequestFullscreen();
+          }
+          console.log('已重新进入全屏模式');
+        }
+      } catch (err) {
+        console.log('重新进入全屏失败:', err);
+      }
+    }
   }
 });
 
@@ -744,13 +786,66 @@ function stopTestMode() {
 }
 
 function selectOption(type, value) {
-  gameState[type] = value;
+  if (type === 'difficulty') {
+    gameSettings.difficulty = value;
+    localStorage.setItem('gameDifficulty', value);
+  } else if (type === 'piaoEnabled') {
+    gameSettings.piaoEnabled = value;
+    localStorage.setItem('piaoEnabled', String(value));
+  } else {
+    gameState[type] = value;
+  }
   
   const buttonsContainer = document.getElementById(`${type}Buttons`);
-  const buttons = buttonsContainer.querySelectorAll('.option-btn');
-  buttons.forEach(btn => {
-    btn.classList.toggle('selected', parseInt(btn.dataset.value) === value);
-  });
+  if (buttonsContainer) {
+    const buttons = buttonsContainer.querySelectorAll('.option-btn');
+    buttons.forEach(btn => {
+      const btnValue = btn.dataset.value;
+      let isSelected = false;
+      if (type === 'piaoEnabled') {
+        isSelected = btnValue === String(value);
+      } else if (btnValue === String(value) || btnValue === value) {
+        isSelected = true;
+      }
+      btn.classList.toggle('selected', isSelected);
+    });
+  }
+  
+  console.log(`设置已更新: ${type} = ${value}`);
+}
+
+function loadGameSettings() {
+  const savedDifficulty = localStorage.getItem('gameDifficulty');
+  if (savedDifficulty && ['easy', 'medium', 'hard'].includes(savedDifficulty)) {
+    gameSettings.difficulty = savedDifficulty;
+  }
+  
+  const savedPiaoEnabled = localStorage.getItem('piaoEnabled');
+  if (savedPiaoEnabled !== null) {
+    gameSettings.piaoEnabled = savedPiaoEnabled === 'true';
+  }
+  
+  console.log('加载游戏设置:', gameSettings);
+  
+  updateSettingsUI();
+}
+
+function updateSettingsUI() {
+  const difficultyButtons = document.getElementById('difficultyButtons');
+  if (difficultyButtons) {
+    const buttons = difficultyButtons.querySelectorAll('.option-btn');
+    buttons.forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.value === gameSettings.difficulty);
+    });
+  }
+  
+  const piaoEnabledButtons = document.getElementById('piaoEnabledButtons');
+  if (piaoEnabledButtons) {
+    const buttons = piaoEnabledButtons.querySelectorAll('.option-btn');
+    buttons.forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.value === String(gameSettings.piaoEnabled));
+    });
+  }
 }
 
 function getCardColor(char) {
@@ -797,6 +892,12 @@ function sortHand(hand) {
 }
 
 async function enterFullscreenAndLockOrientation() {
+  if (!isMobileDevice()) {
+    console.log('Windows设备，跳过全屏功能');
+    initAudioOnUserInteraction();
+    return true;
+  }
+  
   try {
     const docEl = document.documentElement;
     
@@ -812,7 +913,6 @@ async function enterFullscreenAndLockOrientation() {
     
     console.log('已进入全屏模式');
     
-    // 全屏后立即初始化音频
     initAudioOnUserInteraction();
     
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -820,10 +920,8 @@ async function enterFullscreenAndLockOrientation() {
     if (screen.orientation && screen.orientation.lock) {
       try {
         await screen.orientation.lock('landscape');
-        // 屏幕方向锁定后再次初始化音频
         initAudioOnUserInteraction();
       } catch (e) {
-        // 屏幕方向锁定不支持，忽略错误
       }
     }
     
@@ -905,15 +1003,25 @@ function startTestFromRound8() {
 let piaoCountdown = 10;
 let piaoCountdownTimer = null;
 let currentPiaoPlayerIndex = 0;
-let piaoSetCount = 0; // 记录已设置飘分的玩家数量
+let piaoSetCount = 0;
 
 function showPiaoScreen() {
   console.log('====== showPiaoScreen 开始 ======');
   console.log('庄家索引:', gameState.dealerIndex);
-  console.log('重置 piaoSetCount 为 0');
+  console.log('飘分设置开关:', gameSettings.piaoEnabled);
   
+  if (!gameSettings.piaoEnabled) {
+    console.log('飘分设置已关闭，所有玩家飘分设为0，直接开始发牌');
+    for (const player of gameState.players) {
+      player.piao = 0;
+    }
+    startDealingAnimation();
+    return;
+  }
+  
+  console.log('重置 piaoSetCount 为 0');
   currentPiaoPlayerIndex = gameState.dealerIndex;
-  piaoSetCount = 0; // 重置计数器
+  piaoSetCount = 0;
   
   console.log('开始显示第一个玩家的飘分页面');
   showPlayerPiaoScreen();
@@ -1962,20 +2070,58 @@ function selectAIDiscardMedium(player) {
 
 // 困难模式：高级策略 - 优先保证胡牌
 function selectAIDiscardHard(player) {
-  // 首先检查是否可以胡牌
   const huResult = checkHu(player);
   if (huResult.canHu) {
     console.log('困难模式: 已经可以胡牌，选择最优出牌');
   }
   
-  const scoredCards = player.hand.map((card, index) => ({
-    card,
-    index,
-    score: evaluateCardHard(card, player.hand, player)
-  }));
+  const lastChiMeld = player.melds && player.melds.length > 0 && player.melds[player.melds.length - 1];
+  const recentChiCards = lastChiMeld && lastChiMeld.type === 'sequence' && lastChiMeld.source === 'chi' 
+    ? lastChiMeld.cards.map(c => c.character) 
+    : [];
+  
+  const scoredCards = player.hand.map((card, index) => {
+    let bonus = 0;
+    if (recentChiCards.includes(card.character)) {
+      bonus += 500;
+      console.log('困难模式: 保留刚吃牌相关的牌', card.character, '加分500');
+    }
+    
+    return {
+      card,
+      index,
+      score: evaluateCardHard(card, player.hand, player) + bonus
+    };
+  });
   
   scoredCards.sort((a, b) => a.score - b.score);
   console.log('困难模式: 选择索引', scoredCards[0].index, '分数', scoredCards[0].score);
+  return scoredCards[0].index;
+}
+
+// 中等模式：基础策略
+function selectAIDiscardMedium(player) {
+  const lastChiMeld = player.melds && player.melds.length > 0 && player.melds[player.melds.length - 1];
+  const recentChiCards = lastChiMeld && lastChiMeld.type === 'sequence' && lastChiMeld.source === 'chi' 
+    ? lastChiMeld.cards.map(c => c.character) 
+    : [];
+  
+  const scoredCards = player.hand.map((card, index) => {
+    let bonus = 0;
+    if (recentChiCards.includes(card.character)) {
+      bonus += 200;
+      console.log('中等模式: 保留刚吃牌相关的牌', card.character, '加分200');
+    }
+    
+    return {
+      card,
+      index,
+      score: evaluateCardMedium(card, player.hand, player) + bonus
+    };
+  });
+  
+  scoredCards.sort((a, b) => a.score - b.score);
+  console.log('中等模式: 选择索引', scoredCards[0].index, '分数', scoredCards[0].score);
   return scoredCards[0].index;
 }
 
@@ -1983,21 +2129,66 @@ function selectAIDiscardHard(player) {
 function evaluateCardMedium(card, hand, player) {
   let score = 0;
   
-  // 特殊牌（上、福）优先保留
-  if (card.isSpecial) score += 100;
+  if (card.isSpecial) score += 150;
   
-  // 同字数量越多越保留
   const sameCount = hand.filter(c => c.character === card.character).length;
-  if (sameCount >= 2) score += 50 * sameCount;
+  if (sameCount >= 4) score += 200;
+  else if (sameCount >= 3) score += 150;
+  else if (sameCount >= 2) score += 80;
   
-  // 同组牌数量
   const sentenceCards = hand.filter(c => c.sentence === card.sentence);
-  if (sentenceCards.length >= 2) score += 30;
+  const sentenceChars = {};
+  sentenceCards.forEach(c => {
+    sentenceChars[c.position] = (sentenceChars[c.position] || 0) + 1;
+  });
   
-  // 听牌状态下更谨慎
+  const hasCompleteSentence = sentenceChars[0] && sentenceChars[1] && sentenceChars[2];
+  if (hasCompleteSentence) {
+    score += 100;
+    if (card.sentence === 1 || card.sentence === 8) {
+      score += 50;
+    }
+  } else {
+    const missingPositions = [0, 1, 2].filter(p => !sentenceChars[p]);
+    if (missingPositions.length === 1) {
+      score += 40;
+    } else if (missingPositions.length === 2) {
+      score += 15;
+    }
+  }
+  
+  const currentXiangTing = calculateXiangTingShu(hand, player.melds || []);
+  const tempHand = hand.filter(c => c.id !== card.id);
+  const afterDiscardXiangTing = calculateXiangTingShu(tempHand, player.melds || []);
+  
+  if (afterDiscardXiangTing < currentXiangTing) {
+    score -= 500;
+  } else if (afterDiscardXiangTing > currentXiangTing) {
+    score += 400;
+  }
+  
+  const tingPrediction = predictTingAfterDiscard(card, hand, { ...player, melds: player.melds || [] });
+  if (tingPrediction.canTing) {
+    score -= 300 + tingPrediction.tingCount * 50;
+  }
+  
   if (player.isTing) {
-    // 听牌后优先出单张
-    if (sameCount === 1) score -= 20;
+    if (sameCount === 1 && !card.isSpecial) {
+      score -= 100;
+    }
+    if (sameCount >= 2 || card.isSpecial || hasCompleteSentence) {
+      score += 80;
+    }
+  }
+  
+  const currentHuCount = calculateHuCount(hand, player.melds || []);
+  if (currentHuCount < 11) {
+    if (card.character === '上' || card.character === '福') {
+      score += 100;
+    }
+    if (sameCount >= 3) {
+      score += 80;
+    }
   }
   
   return score;
@@ -2010,10 +2201,8 @@ function evaluateCardHard(card, hand, player) {
   console.log('=== AI出牌评分 ===');
   console.log('评估牌:', card.character);
   
-  // 确保player有melds属性
   const playerWithMelds = { ...player, melds: player.melds || [] };
   
-  // 0. 首先检查是否可以胡牌
   const huResult = checkHu(playerWithMelds);
   if (huResult.canHu) {
     console.log('已可胡牌，保留关键牌');
@@ -2038,89 +2227,76 @@ function evaluateCardHard(card, hand, player) {
     return score;
   }
   
-  // === 核心策略：向听数优化 ===
   const currentXiangTing = calculateXiangTingShu(hand, player.melds || []);
   console.log('当前向听数:', currentXiangTing);
   
-  // 模拟出牌后的向听数
   const tempHand = hand.filter(c => c.id !== card.id);
   const afterDiscardXiangTing = calculateXiangTingShu(tempHand, player.melds || []);
   console.log('出牌后向听数:', afterDiscardXiangTing);
   
-  // 向听数变化是最高优先级的评分因素
   if (afterDiscardXiangTing < currentXiangTing) {
-    // 向听数减少，大幅加分
     const improvement = currentXiangTing - afterDiscardXiangTing;
-    score -= improvement * 1000; // 负分表示优先出
-    console.log('★★★ 向听数减少', improvement, '，优先出牌，评分:', -improvement * 1000);
+    score -= improvement * 3000;
+    console.log('★★★ 向听数减少', improvement, '，优先出牌，评分:', -improvement * 3000);
   } else if (afterDiscardXiangTing > currentXiangTing) {
-    // 向听数增加，大幅扣分
     const penalty = afterDiscardXiangTing - currentXiangTing;
-    score += penalty * 800; // 正分表示不优先出
-    console.log('★★★ 向听数增加', penalty, '，不优先出牌，评分:', penalty * 800);
+    score += penalty * 2500;
+    console.log('★★★ 向听数增加', penalty, '，不优先出牌，评分:', penalty * 2500);
   } else {
-    // 向听数不变，根据其他因素评分
     console.log('向听数不变，根据其他因素评分');
   }
   
-  // === 高级策略 ===
-  
-  // 1. 危险牌检查 - 优先检查出牌是否会被点炮
   const dangerScore = checkDangerousCard(card, hand, playerWithMelds);
   if (dangerScore < 0) {
-      score += dangerScore;
-      console.log('危险牌扣分:', dangerScore);
-    }
+    score += dangerScore * 2;
+    console.log('危险牌扣分:', dangerScore * 2);
+  }
 
-  // 2. 听牌预测 - 模拟出牌后能否听牌
   const tingPrediction = predictTingAfterDiscard(card, hand, playerWithMelds);
   if (tingPrediction.canTing) {
-    score -= 500 + tingPrediction.tingCount * 100; // 负分表示优先出
-    console.log('★★★ 出牌后可听牌，听牌数:', tingPrediction.tingCount, '评分:', -(500 + tingPrediction.tingCount * 100));
+    const tingBonus = 1200 + tingPrediction.tingCount * 200;
+    score -= tingBonus;
+    console.log('★★★ 出牌后可听牌，听牌数:', tingPrediction.tingCount, '评分:', -tingBonus);
   }
   
-  // 3. 进张效率 - 计算每张牌的进张价值
-  const jinZhangValue = calculateJinZhangValue(card, hand, playerWithMelds);
-  score += jinZhangValue * 2;
-  console.log('进张价值:', jinZhangValue * 2);
+  const jinZhangValue = calculateJinZhangValueOptimized(card, hand, playerWithMelds);
+  score -= jinZhangValue * 1.5;
+  console.log('进张价值:', -jinZhangValue * 1.5);
   
-  // 4. 安全牌分析
   const safetyScore = analyzeCardSafety(card, hand, playerWithMelds);
   score += safetyScore;
   console.log('安全牌评分:', safetyScore);
   
-  // 5. 对手手牌预测
-  const opponentPrediction = predictOpponentHands(card);
-  score += opponentPrediction;
+  const tingWidthScore = optimizeTingWidthOptimized(card, hand, player);
+  score -= tingWidthScore;
+  console.log('听牌宽度评分:', -tingWidthScore);
   
-  // 6. 听牌宽度优化
-  const tingWidthScore = optimizeTingWidth(card, hand, player);
-  score += tingWidthScore;
+  const efficiencyScore = calculateCardEfficiency(card, hand, playerWithMelds);
+  score -= efficiencyScore;
+  console.log('牌效评分:', -efficiencyScore);
   
-  // === 胡数优化策略 ===
+  const structureScore = analyzeHandStructure(card, hand, playerWithMelds);
+  score += structureScore;
+  console.log('手牌结构评分:', structureScore);
   
-  // 计算当前胡数
   const currentHuCount = calculateHuCount(hand, player.melds || []);
   
-  // 精牌（上、福）优先保留 - 每张精牌贡献4胡
   if (card.character === '上' || card.character === '福') {
-    score += 300;
-    console.log('精牌保留:', card.character, '加分300');
+    score += 500;
+    console.log('精牌保留:', card.character, '加分500');
   }
   
-  // 同字数量评估 - 坎和招贡献大量胡数
   const sameCount = hand.filter(c => c.character === card.character).length;
   if (sameCount >= 4) {
-    score += 400;
-    console.log('招保留:', card.character, '加分400');
+    score += 600;
+    console.log('招保留:', card.character, '加分600');
   } else if (sameCount === 3) {
-    score += 300;
-    console.log('坎保留:', card.character, '加分300');
+    score += 500;
+    console.log('坎保留:', card.character, '加分500');
   } else if (sameCount === 2) {
-    score += 150; // 对子可能形成坎
+    score += 250;
   }
   
-  // 同组牌分析 - 优先保留能形成句的牌
   const sentenceCards = hand.filter(c => c.sentence === card.sentence);
   const sentenceChars = {};
   sentenceCards.forEach(c => {
@@ -2129,10 +2305,9 @@ function evaluateCardHard(card, hand, player) {
   
   const hasCompleteSentence = sentenceChars[0] && sentenceChars[1] && sentenceChars[2];
   if (hasCompleteSentence) {
-    score += 200; // 完整句子
-    // 精句（组1和组8）额外加分
+    score += 300;
     if (card.sentence === 1 || card.sentence === 8) {
-      score += 100; // 精句贡献4胡
+      score += 200;
     }
   } else {
     const missingPositions = [0, 1, 2].filter(p => !sentenceChars[p]);
@@ -2143,55 +2318,54 @@ function evaluateCardHard(card, hand, player) {
         sum + p.discards.filter(c => c.sentence === card.sentence && c.position === missingPos).length, 0);
       const remaining = totalInDeck - inDiscards;
       if (remaining > 0) {
-        score += 120; // 缺一张就能成句
+        score += 180;
       } else {
-        score += 30;
+        score += 15;
       }
     } else if (missingPositions.length === 2) {
-      score += 20;
+      score += 10;
     }
   }
   
-  // 计算剩余牌堆中该牌的数量
   const totalInDeck = 4;
   const inHand = sameCount;
   const inDiscards = gameState.players.reduce((sum, p) => 
     sum + p.discards.filter(c => c.character === card.character).length, 0);
   const remaining = totalInDeck - inHand - inDiscards;
   
-  // 剩余牌越少，该牌越安全
-  score -= remaining * 15;
+  score -= remaining * 25;
   
-  // 听牌状态下的策略
   if (player.isTing) {
     if (sameCount === 1 && !card.isSpecial) {
-      score -= 200;
+      score -= 500;
     }
     if (sameCount >= 2 || card.isSpecial || hasCompleteSentence) {
-      score += 150;
+      score += 400;
+    }
+    
+    const tingResult = checkTing({ hand: hand.filter(c => c.id !== card.id), melds: player.melds || [] });
+    if (!tingResult.isTing) {
+      score += 1000;
     }
   }
   
-  // 分析对手可能的牌型
   const opponents = gameState.players.filter((p, i) => i !== gameState.currentPlayerIndex);
   let opponentTingCount = 0;
   opponents.forEach(opponent => {
     if (opponent.isTing) {
       opponentTingCount++;
-      score -= 50;
+      score -= 150;
       const recentDiscards = opponent.discards.slice(-5);
       if (recentDiscards.some(c => c.sentence === card.sentence)) {
-        score += 20;
+        score += 60;
       }
     }
   });
   
-  // 位置价值
   if (card.position === 0) {
-    score += 20;
+    score += 35;
   }
   
-  // 检查是否有更好的组合可能
   const sentenceGroups = {};
   hand.forEach(c => {
     if (!sentenceGroups[c.sentence]) {
@@ -2207,60 +2381,391 @@ function evaluateCardHard(card, hand, player) {
                               (currentGroup[2] > 0 ? 1 : 0);
     
     if (groupCompleteness === 3) {
-      score += 100;
+      score += 180;
     } else if (groupCompleteness === 2) {
-      score += 50;
+      score += 100;
     }
   }
   
-  // 手牌数量较少时更保守
   if (hand.length <= 15) {
     if (sameCount >= 2 || card.isSpecial) {
-      score += 80;
+      score += 180;
     }
   }
   
-  // 胡数贡献 - 如果当前胡数不足11，优先保留能增加胡数的牌
   if (currentHuCount < 11) {
-    // 精牌额外加分
     if (card.character === '上' || card.character === '福') {
-      score += 150;
+      score += 400;
     }
-    // 坎、招额外加分
     if (sameCount >= 3) {
-      score += 100;
+      score += 250;
     }
-    // 精句额外加分
     if ((card.sentence === 1 || card.sentence === 8) && sentenceChars[card.position]) {
-      score += 50;
+      score += 120;
+    }
+    
+    const neededHu = 11 - currentHuCount;
+    const potentialHuGain = calculatePotentialHuGain(card, hand, player.melds || []);
+    if (potentialHuGain >= neededHu) {
+      score += 200;
     }
   }
   
-  // 多个对手听牌时的防守策略
   if (opponentTingCount >= 2) {
     if (remaining === 0) {
-      score += 100;
+      score += 250;
     } else if (remaining === 1) {
-      score += 50;
+      score += 120;
     } else {
-      score -= 30;
+      score -= 100;
     }
   }
   
-  // 牌局阶段分析
   const deckRemaining = gameState.deck.length;
   if (deckRemaining < 20) {
     if (sameCount >= 2 || card.isSpecial) {
-      score += 40;
+      score += 100;
     }
   } else if (deckRemaining > 60) {
     if (sameCount === 1 && !card.isSpecial) {
-      score -= 30;
+      score -= 60;
     }
   }
   
   console.log('最终评分:', score);
   console.log('==================');
+  
+  return score;
+}
+
+function calculateCardEfficiency(card, hand, player) {
+  let efficiency = 0;
+  
+  const tempHand = hand.filter(c => c.id !== card.id);
+  
+  const sentenceCards = tempHand.filter(c => c.sentence === card.sentence);
+  const positions = {};
+  sentenceCards.forEach(c => {
+    positions[c.position] = (positions[c.position] || 0) + 1;
+  });
+  
+  if (positions[0] && positions[1] && positions[2]) {
+    efficiency += 120;
+  } else {
+    const missingPositions = [0, 1, 2].filter(p => !positions[p]);
+    if (missingPositions.length === 1) {
+      const missingPos = missingPositions[0];
+      const missingChar = getSentenceCharacters(card.sentence)[missingPos];
+      const inDiscards = gameState.players.reduce((sum, p) => 
+        sum + p.discards.filter(c => c.character === missingChar).length, 0);
+      const inMelds = gameState.players.reduce((sum, p) => 
+        sum + (p.melds || []).reduce((mSum, m) => 
+          mSum + m.cards.filter(c => c.character === missingChar).length, 0), 0);
+      const remaining = 4 - inDiscards - inMelds;
+      
+      if (remaining > 0) {
+        efficiency += 60 + remaining * 20;
+      }
+    } else if (missingPositions.length === 2) {
+      let totalRemaining = 0;
+      for (const missingPos of missingPositions) {
+        const missingChar = getSentenceCharacters(card.sentence)[missingPos];
+        const inDiscards = gameState.players.reduce((sum, p) => 
+          sum + p.discards.filter(c => c.character === missingChar).length, 0);
+        const inMelds = gameState.players.reduce((sum, p) => 
+          sum + (p.melds || []).reduce((mSum, m) => 
+            mSum + m.cards.filter(c => c.character === missingChar).length, 0), 0);
+        totalRemaining += 4 - inDiscards - inMelds;
+      }
+      efficiency += totalRemaining * 5;
+    }
+  }
+  
+  const sameCount = tempHand.filter(c => c.character === card.character).length;
+  if (sameCount >= 3) {
+    efficiency += 100;
+  } else if (sameCount === 2) {
+    efficiency += 50;
+  }
+  
+  const currentXiangTing = calculateXiangTingShu(hand, player.melds || []);
+  const newXiangTing = calculateXiangTingShu(tempHand, player.melds || []);
+  
+  if (newXiangTing < currentXiangTing) {
+    efficiency += 200;
+  }
+  
+  const multiWayScore = calculateMultiWayValue(tempHand, player.melds || []);
+  efficiency += multiWayScore;
+  
+  return efficiency;
+}
+
+function calculateMultiWayValue(hand, melds) {
+  let value = 0;
+  
+  const sentenceGroups = {};
+  hand.forEach(c => {
+    if (!sentenceGroups[c.sentence]) {
+      sentenceGroups[c.sentence] = { 0: 0, 1: 0, 2: 0 };
+    }
+    sentenceGroups[c.sentence][c.position]++;
+  });
+  
+  for (const [sentence, group] of Object.entries(sentenceGroups)) {
+    const posCount = (group[0] > 0 ? 1 : 0) + (group[1] > 0 ? 1 : 0) + (group[2] > 0 ? 1 : 0);
+    
+    if (posCount === 3) {
+      value += 30;
+    } else if (posCount === 2) {
+      const missingPositions = [0, 1, 2].filter(p => group[p] === 0);
+      const missingPos = missingPositions[0];
+      const missingChar = getSentenceCharacters(parseInt(sentence))[missingPos];
+      const inDiscards = gameState.players.reduce((sum, p) => 
+        sum + p.discards.filter(c => c.character === missingChar).length, 0);
+      const inMelds = gameState.players.reduce((sum, p) => 
+        sum + (p.melds || []).reduce((mSum, m) => 
+          mSum + m.cards.filter(c => c.character === missingChar).length, 0), 0);
+      const remaining = 4 - inDiscards - inMelds;
+      
+      if (remaining > 0) {
+        value += 15 + remaining * 5;
+      }
+    }
+  }
+  
+  const counts = {};
+  hand.forEach(c => {
+    counts[c.character] = (counts[c.character] || 0) + 1;
+  });
+  
+  for (const [char, count] of Object.entries(counts)) {
+    if (count >= 2) {
+      const inDiscards = gameState.players.reduce((sum, p) => 
+        sum + p.discards.filter(c => c.character === char).length, 0);
+      const inMelds = gameState.players.reduce((sum, p) => 
+        sum + (p.melds || []).reduce((mSum, m) => 
+          mSum + m.cards.filter(c => c.character === char).length, 0), 0);
+      const remaining = 4 - count - inDiscards - inMelds;
+      
+      if (remaining > 0) {
+        value += remaining * 8;
+      }
+    }
+  }
+  
+  return value;
+}
+
+function analyzeHandStructure(card, hand, player) {
+  let score = 0;
+  
+  const tempHand = hand.filter(c => c.id !== card.id);
+  
+  const sentenceGroups = {};
+  tempHand.forEach(c => {
+    if (!sentenceGroups[c.sentence]) {
+      sentenceGroups[c.sentence] = { 0: 0, 1: 0, 2: 0, total: 0 };
+    }
+    sentenceGroups[c.sentence][c.position]++;
+    sentenceGroups[c.sentence].total++;
+  });
+  
+  let completeSentences = 0;
+  let nearCompleteSentences = 0;
+  let partialSentences = 0;
+  let isolatedCards = 0;
+  
+  for (const [sentence, group] of Object.entries(sentenceGroups)) {
+    const hasAll = group[0] > 0 && group[1] > 0 && group[2] > 0;
+    const hasTwo = (group[0] > 0 ? 1 : 0) + (group[1] > 0 ? 1 : 0) + (group[2] > 0 ? 1 : 0) === 2;
+    
+    if (hasAll) {
+      completeSentences++;
+    } else if (hasTwo) {
+      nearCompleteSentences++;
+    } else if (group.total >= 2) {
+      partialSentences++;
+    } else {
+      isolatedCards++;
+    }
+  }
+  
+  score += completeSentences * 60;
+  score += nearCompleteSentences * 35;
+  score += partialSentences * 15;
+  score -= isolatedCards * 25;
+  
+  const originalGroups = {};
+  hand.forEach(c => {
+    if (!originalGroups[c.sentence]) {
+      originalGroups[c.sentence] = { 0: 0, 1: 0, 2: 0, total: 0 };
+    }
+    originalGroups[c.sentence][c.position]++;
+    originalGroups[c.sentence].total++;
+  });
+  
+  let originalComplete = 0;
+  let originalNearComplete = 0;
+  
+  for (const [sentence, group] of Object.entries(originalGroups)) {
+    const hasAll = group[0] > 0 && group[1] > 0 && group[2] > 0;
+    const hasTwo = (group[0] > 0 ? 1 : 0) + (group[1] > 0 ? 1 : 0) + (group[2] > 0 ? 1 : 0) === 2;
+    
+    if (hasAll) originalComplete++;
+    else if (hasTwo) originalNearComplete++;
+  }
+  
+  if (completeSentences < originalComplete) {
+    score += 120;
+  }
+  if (nearCompleteSentences < originalNearComplete) {
+    score += 60;
+  }
+  
+  const flexibilityScore = calculateHandFlexibility(tempHand);
+  score -= flexibilityScore;
+  
+  return score;
+}
+
+function calculateHandFlexibility(hand) {
+  let flexibility = 0;
+  
+  const sentenceGroups = {};
+  hand.forEach(c => {
+    if (!sentenceGroups[c.sentence]) {
+      sentenceGroups[c.sentence] = new Set();
+    }
+    sentenceGroups[c.sentence].add(c.position);
+  });
+  
+  for (const [sentence, positions] of Object.entries(sentenceGroups)) {
+    if (positions.size === 2) {
+      flexibility += 20;
+    } else if (positions.size === 1) {
+      flexibility += 5;
+    }
+  }
+  
+  const counts = {};
+  hand.forEach(c => {
+    counts[c.character] = (counts[c.character] || 0) + 1;
+  });
+  
+  for (const [char, count] of Object.entries(counts)) {
+    if (count === 2) {
+      flexibility += 15;
+    } else if (count >= 3) {
+      flexibility += 25;
+    }
+  }
+  
+  return flexibility;
+}
+
+function calculateJinZhangValueOptimized(card, hand, player) {
+  let value = 0;
+  
+  const tempHand = hand.filter(c => c.id !== card.id);
+  
+  const currentXiangTing = calculateXiangTingShu(hand, player.melds || []);
+  
+  const sentenceChars = getSentenceCharacters(card.sentence);
+  
+  for (const char of sentenceChars) {
+    const testCard = createCardByCharacter(char);
+    if (!testCard) continue;
+    
+    const testHand = [...tempHand, testCard];
+    const tempPlayer = { ...player, hand: testHand, melds: player.melds || [] };
+    
+    const tingResult = checkTing(tempPlayer);
+    const huResult = checkHu(tempPlayer);
+    const newXiangTing = calculateXiangTingShu(testHand, player.melds || []);
+    
+    if (tingResult.isTing || huResult.canHu) {
+      const inHand = tempHand.filter(c => c.character === char).length;
+      const inDiscards = gameState.players.reduce((sum, p) => 
+        sum + p.discards.filter(c => c.character === char).length, 0);
+      const remaining = 4 - inHand - inDiscards;
+      
+      if (remaining > 0) {
+        if (huResult.canHu) {
+          value += remaining * 20;
+        } else if (tingResult.isTing) {
+          value += remaining * 15;
+        }
+      }
+    }
+    
+    if (newXiangTing < currentXiangTing) {
+      const inHand = tempHand.filter(c => c.character === char).length;
+      const inDiscards = gameState.players.reduce((sum, p) => 
+        sum + p.discards.filter(c => c.character === char).length, 0);
+      const remaining = 4 - inHand - inDiscards;
+      
+      if (remaining > 0) {
+        value += remaining * 8;
+      }
+    }
+  }
+  
+  return value;
+}
+
+function optimizeTingWidthOptimized(card, hand, player) {
+  let score = 0;
+  
+  const tempHand = hand.filter(c => c.id !== card.id);
+  const tempPlayer = { ...player, hand: tempHand };
+  
+  const tingResult = checkTing(tempPlayer);
+  
+  if (tingResult.isTing && tingResult.tingCards) {
+    const tingCount = tingResult.tingCards.length;
+    
+    score += tingCount * 80;
+    
+    let totalRemaining = 0;
+    let highValueTingCount = 0;
+    
+    for (const tingChar of tingResult.tingCards) {
+      const inHand = tempHand.filter(c => c.character === tingChar).length;
+      const inDiscards = gameState.players.reduce((sum, p) => 
+        sum + p.discards.filter(c => c.character === tingChar).length, 0);
+      const inMelds = gameState.players.reduce((sum, p) => 
+        sum + (p.melds || []).reduce((mSum, m) => 
+          mSum + m.cards.filter(c => c.character === tingChar).length, 0), 0);
+      const remaining = 4 - inHand - inDiscards - inMelds;
+      totalRemaining += remaining;
+      
+      if (tingChar === '上' || tingChar === '福') {
+        highValueTingCount++;
+      }
+    }
+    
+    score += totalRemaining * 30;
+    score += highValueTingCount * 50;
+    
+    if (tingCount >= 6) {
+      score += 300;
+    } else if (tingCount >= 4) {
+      score += 180;
+    } else if (tingCount >= 3) {
+      score += 120;
+    } else if (tingCount >= 2) {
+      score += 60;
+    }
+    
+    const currentTingResult = checkTing({ hand, melds: player.melds || [] });
+    if (currentTingResult.isTing && currentTingResult.tingCards) {
+      const currentTingCount = currentTingResult.tingCards.length;
+      if (tingCount > currentTingCount) {
+        score += (tingCount - currentTingCount) * 100;
+      }
+    }
+  }
   
   return score;
 }
@@ -2279,7 +2784,6 @@ function predictTingAfterDiscard(card, hand, player) {
   };
 }
 
-// 进张效率 - 计算每张牌的进张价值
 function calculateJinZhangValue(card, hand, player) {
   let value = 0;
   
@@ -2290,6 +2794,8 @@ function calculateJinZhangValue(card, hand, player) {
   let usefulCards = 0;
   let totalRemaining = 0;
   
+  const currentXiangTing = calculateXiangTingShu(hand, player.melds || []);
+  
   for (const char of allCharacters) {
     const testCard = createCardByCharacter(char);
     if (!testCard) continue;
@@ -2299,6 +2805,7 @@ function calculateJinZhangValue(card, hand, player) {
     
     const tingResult = checkTing(tempPlayer);
     const huResult = checkHu(tempPlayer);
+    const newXiangTing = calculateXiangTingShu(testHand, player.melds || []);
     
     if (tingResult.isTing || huResult.canHu) {
       const inHand = tempHand.filter(c => c.character === char).length;
@@ -2311,13 +2818,27 @@ function calculateJinZhangValue(card, hand, player) {
         totalRemaining += remaining;
         
         if (huResult.canHu) {
-          value += remaining * 10;
+          value += remaining * 15;
         } else if (tingResult.isTing) {
-          value += remaining * 5;
+          value += remaining * 10;
         }
       }
     }
+    
+    if (newXiangTing < currentXiangTing) {
+      const inHand = tempHand.filter(c => c.character === char).length;
+      const inDiscards = gameState.players.reduce((sum, p) => 
+        sum + p.discards.filter(c => c.character === char).length, 0);
+      const remaining = 4 - inHand - inDiscards;
+      
+      if (remaining > 0) {
+        value += remaining * 5;
+      }
+    }
   }
+  
+  value += usefulCards * 3;
+  value += totalRemaining * 2;
   
   return value;
 }
@@ -2468,7 +2989,6 @@ function predictOpponentHands(card) {
   return score;
 }
 
-// 听牌宽度优化 - 选择听更多牌的打法
 function optimizeTingWidth(card, hand, player) {
   let score = 0;
   
@@ -2480,29 +3000,45 @@ function optimizeTingWidth(card, hand, player) {
   if (tingResult.isTing && tingResult.tingCards) {
     const tingCount = tingResult.tingCards.length;
     
-    score += tingCount * 30;
+    score += tingCount * 50;
     
     let totalRemaining = 0;
+    let highValueTingCount = 0;
+    
     for (const tingChar of tingResult.tingCards) {
       const inHand = tempHand.filter(c => c.character === tingChar).length;
       const inDiscards = gameState.players.reduce((sum, p) => 
         sum + p.discards.filter(c => c.character === tingChar).length, 0);
-      const remaining = 4 - inHand - inDiscards;
+      const inMelds = gameState.players.reduce((sum, p) => 
+        sum + (p.melds || []).reduce((mSum, m) => 
+          mSum + m.cards.filter(c => c.character === tingChar).length, 0), 0);
+      const remaining = 4 - inHand - inDiscards - inMelds;
       totalRemaining += remaining;
+      
+      if (tingChar === '上' || tingChar === '福') {
+        highValueTingCount++;
+      }
     }
     
-    score += totalRemaining * 15;
+    score += totalRemaining * 20;
+    score += highValueTingCount * 30;
     
-    if (tingCount >= 5) {
-      score += 100;
+    if (tingCount >= 6) {
+      score += 200;
+    } else if (tingCount >= 4) {
+      score += 120;
     } else if (tingCount >= 3) {
-      score += 50;
+      score += 80;
+    } else if (tingCount >= 2) {
+      score += 40;
     }
     
-    const specialChars = ['上', '福'];
-    const hasSpecialTing = tingResult.tingCards.some(c => specialChars.includes(c));
-    if (hasSpecialTing) {
-      score += 40;
+    const currentTingResult = checkTing({ hand, melds: player.melds || [] });
+    if (currentTingResult.isTing && currentTingResult.tingCards) {
+      const currentTingCount = currentTingResult.tingCards.length;
+      if (tingCount > currentTingCount) {
+        score += (tingCount - currentTingCount) * 60;
+      }
     }
   }
   
@@ -2515,6 +3051,8 @@ function evaluateCard(card, hand) {
 }
 
 function discardCard(playerIndex, cardIndex) {
+  clearCaches();
+  
   const player = gameState.players[playerIndex];
   const card = player.hand[cardIndex];
   
@@ -2555,7 +3093,7 @@ function discardCard(playerIndex, cardIndex) {
   
   setTimeout(() => {
     checkResponses();
-  }, 400);
+  }, 800);
 }
 
 function animateDiscardCard(playerIndex, card) {
@@ -3044,13 +3582,13 @@ function canPlayerChi(player, card) {
 function canPlayerPeng(player, card) {
   const count = player.hand.filter(c => c.character === card.character).length;
   console.log('碰牌检查 - 玩家:', player.name, '牌:', card.character, '手牌中同字数:', count);
-  return count === 2;
+  return count >= 2;
 }
 
 function canPlayerZhao(player, card) {
   const count = player.hand.filter(c => c.character === card.character).length;
   console.log('招牌检查 - 玩家:', player.name, '牌:', card.character, '手牌中同字数:', count);
-  return count === 3;
+  return count >= 3;
 }
 
 function checkHu(player, extraCard = null, isDianPao = false) {
@@ -3704,9 +4242,20 @@ function checkHongYuan(hand, melds, effectiveHasZhao) {
     if (!allSequences) return 0;
   }
   
+  let shangDaRenSentenceCount = 0;
+  let fuLuShouSentenceCount = 0;
+  let totalSentenceCount = 0;
+  
+  for (const meld of melds) {
+    if (meld.type === 'sequence') {
+      totalSentenceCount++;
+      const sentence = meld.cards[0].sentence;
+      if (sentence === 1) shangDaRenSentenceCount++;
+      if (sentence === 8) fuLuShouSentenceCount++;
+    }
+  }
+  
   const usedCardIds = new Set();
-  let handShangDaRenSentence = false;
-  let handFuLuShouSentence = false;
   
   let foundGroup = true;
   while (foundGroup) {
@@ -3724,48 +4273,34 @@ function checkHongYuan(hand, melds, effectiveHasZhao) {
         usedCardIds.add(pos1Cards[0].id);
         usedCardIds.add(pos2Cards[0].id);
         foundGroup = true;
+        totalSentenceCount++;
         
-        if (sentence === 1) handShangDaRenSentence = true;
-        if (sentence === 8) handFuLuShouSentence = true;
+        if (sentence === 1) shangDaRenSentenceCount++;
+        if (sentence === 8) fuLuShouSentenceCount++;
       }
     }
   }
-  
-  const remainingCards = hand.filter(c => !usedCardIds.has(c.id));
-  
-  if (remainingCards.length !== 2) return 0;
-  
-  const [card1, card2] = remainingCards;
-  if (card1.character === card2.character) return 0;
-  if (card1.sentence !== card2.sentence) return 0;
-  if (card1.position === card2.position) return 0;
-  
-  let meldShangDaRenSentence = 0;
-  let meldFuLuShouSentence = 0;
-  
-  for (const meld of melds) {
-    if (meld.type === 'sequence') {
-      const sentence = meld.cards[0].sentence;
-      if (sentence === 1) meldShangDaRenSentence++;
-      if (sentence === 8) meldFuLuShouSentence++;
-    }
-  }
-  
-  let shangDaRenSentenceCount = 0;
-  let fuLuShouSentenceCount = 0;
-  
-  if (handShangDaRenSentence) shangDaRenSentenceCount++;
-  if (handFuLuShouSentence) fuLuShouSentenceCount++;
-  shangDaRenSentenceCount += meldShangDaRenSentence;
-  fuLuShouSentenceCount += meldFuLuShouSentence;
   
   const totalSpecialSentenceCount = shangDaRenSentenceCount + fuLuShouSentenceCount;
   
   if (totalSpecialSentenceCount < 2) return 0;
   
-  if (totalSpecialSentenceCount === 2) {
-    const halfKaoSentence = remainingCards[0].sentence;
-    if (halfKaoSentence !== 1 && halfKaoSentence !== 8) return 0;
+  const remainingCards = hand.filter(c => !usedCardIds.has(c.id));
+  
+  if (remainingCards.length === 0) {
+    if (totalSentenceCount < 6) return 0;
+  } else if (remainingCards.length === 1) {
+    if (totalSentenceCount !== 6) return 0;
+  } else if (remainingCards.length === 2) {
+    if (totalSentenceCount !== 5) return 0;
+    const [card1, card2] = remainingCards;
+    const isPair = card1.character === card2.character;
+    const isHalfKao = card1.sentence === card2.sentence && 
+                      card1.position !== card2.position &&
+                      card1.character !== card2.character;
+    if (!isPair && !isHalfKao) return 0;
+  } else {
+    return 0;
   }
   
   const allCards = [...hand, ...melds.flatMap(m => m.cards)];
@@ -3887,6 +4422,46 @@ function checkHalfKao(hand, melds, sentence) {
   }
   
   return false;
+}
+
+function calculatePotentialHuGain(card, hand, melds) {
+  let potentialGain = 0;
+  
+  if (card.character === '上' || card.character === '福') {
+    potentialGain += 4;
+  }
+  
+  const sameCount = hand.filter(c => c.character === card.character).length;
+  if (sameCount === 1) {
+    potentialGain += 0;
+  } else if (sameCount === 2) {
+    if (card.character === '上' || card.character === '福') {
+      potentialGain += 4;
+    }
+  } else if (sameCount === 3) {
+    if (card.character === '上' || card.character === '福') {
+      potentialGain += 8;
+    } else {
+      potentialGain += 3;
+    }
+  }
+  
+  const sentenceCards = hand.filter(c => c.sentence === card.sentence);
+  const positions = new Set(sentenceCards.map(c => c.position));
+  positions.add(card.position);
+  
+  if (positions.size === 3) {
+    if (card.sentence === 1 || card.sentence === 8) {
+      potentialGain += 4;
+    }
+  } else if (positions.size === 2) {
+    const missingPositions = [0, 1, 2].filter(p => !positions.has(p));
+    if (missingPositions.length === 1) {
+      potentialGain += 2;
+    }
+  }
+  
+  return potentialGain;
 }
 
 function calculateHuCount(hand, melds, huCard = null, isDianPao = false) {
@@ -4073,6 +4648,8 @@ function calculateHuCount(hand, melds, huCard = null, isDianPao = false) {
 }
 
 function performChi(playerIndex) {
+  clearCaches();
+  
   const player = gameState.players[playerIndex];
   const card = gameState.lastDiscardedCard;
   
@@ -4179,6 +4756,8 @@ function performChi(playerIndex) {
 }
 
 function performPeng(playerIndex) {
+  clearCaches();
+  
   const player = gameState.players[playerIndex];
   const card = gameState.lastDiscardedCard;
   
@@ -4249,6 +4828,8 @@ function performPeng(playerIndex) {
 }
 
 function performZhao(playerIndex, char = null) {
+  clearCaches();
+  
   const player = gameState.players[playerIndex];
   
   console.log(`=== 【${player.name}】招牌 ===`);
@@ -4397,12 +4978,13 @@ function finishZhao(playerIndex, player, zhaoCards) {
 }
 
 function handleHu(playerIndex, method) {
-  // 防止重复调用
   if (gameState.isHandlingHu) {
     console.log('handleHu: 已经在处理胡牌，跳过重复调用');
     return;
   }
   gameState.isHandlingHu = true;
+  
+  clearCaches();
   
   console.log('=== handleHu 被调用 ===');
   console.log('玩家索引:', playerIndex, '胡牌方式:', method);
@@ -4744,12 +5326,16 @@ function showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoP
   
   const confirmBtn = document.getElementById('huConfirmBtn');
   if (confirmBtn) {
-    confirmBtn.addEventListener('click', closeHuMessage);
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    newConfirmBtn.addEventListener('click', closeHuMessage);
   }
   
   const closeBtn = document.getElementById('huCloseBtn');
   if (closeBtn) {
-    closeBtn.addEventListener('click', closeHuMessage);
+    const newCloseBtn = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+    newCloseBtn.addEventListener('click', closeHuMessage);
   }
   
   // 添加滑动关闭功能
@@ -4779,13 +5365,13 @@ function showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoP
 }
 
 function closeHuMessage() {
-  // 防止重复调用
   if (gameState.isClosingHuMessage) {
+    console.log('closeHuMessage: 已经在关闭中，跳过');
     return;
   }
   gameState.isClosingHuMessage = true;
+  console.log('closeHuMessage: 开始关闭');
   
-  // 重置胡牌处理标志，允许下一局开始
   gameState.isHandlingHu = false;
   
   const overlay = document.getElementById('dealingOverlay');
@@ -4829,30 +5415,37 @@ function closeHuMessage() {
   document.getElementById('player1HandCount').textContent = '0';
   document.getElementById('myHandCount').textContent = '0';
   document.getElementById('player2HandCount').textContent = '0';
-  document.getElementById('player1Score').textContent = gameState.players[0].score;
-  document.getElementById('myScore').textContent = gameState.players[1].score;
-  document.getElementById('player2Score').textContent = gameState.players[2].score;
+  
+  animateScoreChange(0, gameState.players[0].score);
+  animateScoreChange(1, gameState.players[1].score);
+  animateScoreChange(2, gameState.players[2].score);
   
   const huBadge = document.getElementById('myHuBadge');
   if (huBadge) huBadge.classList.add('hidden');
   
-  // 重置胡数显示
   updateHuBadgeDisplay();
   
   const tingBadge = document.getElementById('tingBadge');
   tingBadge.classList.add('hidden');
   
-  // 检查是否需要显示结算页面（第8局结束后）
+  console.log('当前局数:', gameState.roundNumber);
+  
   if (gameState.roundNumber >= 8) {
-    gameState.isClosingHuMessage = false;
+    console.log('已满8局，显示结算页面');
     showSettlementPage();
+    setTimeout(() => {
+      gameState.isClosingHuMessage = false;
+    }, 500);
     return;
   }
   
   console.log('准备调用 startRound()');
-  // 注意：不在这里重置 isClosingHuMessage，让 startRound 完成后再重置
   startRound();
-  gameState.isClosingHuMessage = false;
+  
+  setTimeout(() => {
+    gameState.isClosingHuMessage = false;
+    console.log('isClosingHuMessage 已重置');
+  }, 1000);
 }
 
 function removeLastDiscard() {
@@ -5186,6 +5779,53 @@ function updateAvatars() {
   });
 }
 
+function animateScoreChange(playerIndex, newScore) {
+  const scoreIds = ['player1Score', 'myScore', 'player2Score'];
+  const scoreEl = document.getElementById(scoreIds[playerIndex]);
+  if (!scoreEl) return;
+  
+  const oldScore = parseInt(scoreEl.textContent) || 0;
+  const diff = newScore - oldScore;
+  
+  if (diff === 0) {
+    scoreEl.textContent = newScore;
+    return;
+  }
+  
+  const avatarIds = ['player1Avatar', 'myAvatar', 'player2Avatar'];
+  const avatarEl = document.getElementById(avatarIds[playerIndex]);
+  
+  scoreEl.classList.add('score-changing');
+  scoreEl.textContent = newScore;
+  
+  if (diff > 0) {
+    scoreEl.classList.add('score-up');
+  } else {
+    scoreEl.classList.add('score-down');
+  }
+  
+  const diffEl = document.createElement('span');
+  diffEl.className = 'score-diff ' + (diff > 0 ? 'positive' : 'negative');
+  diffEl.textContent = (diff > 0 ? '+' : '') + diff;
+  
+  if (avatarEl) {
+    const existingDiff = avatarEl.querySelector('.score-diff');
+    if (existingDiff) existingDiff.remove();
+    
+    avatarEl.style.position = 'relative';
+    avatarEl.appendChild(diffEl);
+    
+    setTimeout(() => {
+      diffEl.classList.add('fade-out');
+      setTimeout(() => diffEl.remove(), 500);
+    }, 1500);
+  }
+  
+  setTimeout(() => {
+    scoreEl.classList.remove('score-changing', 'score-up', 'score-down');
+  }, 1000);
+}
+
 function updateUI() {
   updatePlayerArea(0, 'player1');
   updatePlayerArea(1, 'my');
@@ -5319,23 +5959,46 @@ function createCardElement(card, small = false) {
   return div;
 }
 
+let huCountCache = new Map();
+let huTypeCache = new Map();
+let tingCache = new Map();
+
+function getCacheKey(hand, melds) {
+  const handKey = hand.map(c => c.character).sort().join('');
+  const meldKey = (melds || []).map(m => m.type + m.cards.map(c => c.character).join('')).join('|');
+  return handKey + '|' + meldKey;
+}
+
+function clearCaches() {
+  huCountCache.clear();
+  huTypeCache.clear();
+  tingCache.clear();
+}
+
 function checkTing(player) {
   const hand = [...(player.hand || [])];
   const melds = player.melds || [];
   
-  // 检查基本听牌条件
+  const cacheKey = getCacheKey(hand, melds);
+  if (tingCache.has(cacheKey)) {
+    return tingCache.get(cacheKey);
+  }
+  
+  const result = checkTingInternal(hand, melds);
+  tingCache.set(cacheKey, result);
+  return result;
+}
+
+function checkTingInternal(hand, melds) {
   const basicTing = checkBasicTingCondition(hand, melds);
   
   if (!basicTing.meets) {
     return { isTing: false, tingCards: [] };
   }
   
-  // 根据基本听牌条件类型，检查听牌胡型条件
   let tingCards = [];
   
   if (basicTing.type === 'ninePairs') {
-    // 条件a: 手牌9对 - 直接满足条件
-    // 找出单张牌，听这张牌的对子
     const counts = {};
     for (const card of hand) {
       counts[card.character] = (counts[card.character] || 0) + 1;
@@ -5345,27 +6008,29 @@ function checkTing(player) {
         tingCards.push(char);
       }
     }
-    return { isTing: tingCards.length > 0, tingCards };
+    for (const [char, count] of Object.entries(counts)) {
+      if (count === 3) {
+        tingCards.push(char);
+      }
+    }
+    
+    return { isTing: tingCards.length > 0, tingCards: [...new Set(tingCards)] };
   }
   
   if (basicTing.type === 'sixGroupsOneSingle') {
-    // 条件b: 6句/坎/招+1单 - 从单牌所在的组中可以找到一个字实现胡牌
     const singleCard = basicTing.singleCard;
     if (singleCard) {
-      // 从单牌所在的组中找听牌
       const sentence = singleCard.sentence;
-      const allCharacters = ['上', '大', '人', '丘', '乙', '己', '化', '三', '千', '七', '十', '土', '尔', '小', '生', '八', '九', '子', '佳', '作', '亡', '福', '禄', '寿'];
+      const sentenceChars = getSentenceCharacters(sentence);
       
-      for (const char of allCharacters) {
+      for (const char of sentenceChars) {
         const testCard = createCardByCharacter(char);
         if (!testCard) continue;
         
-        // 检查这张牌是否能和单牌组成对或靠
-        if (testCard.sentence === sentence && testCard.position !== singleCard.position) {
-          // 模拟摸牌后能否胡牌
+        if (testCard.position !== singleCard.position) {
           const testHandWithDraw = [...hand, testCard];
-          const testHuCount = calculateHuCount(testHandWithDraw, melds);
-          const huType = detectHuType(testHandWithDraw, melds, testHuCount);
+          const testHuCount = calculateHuCountCached(testHandWithDraw, melds);
+          const huType = detectHuTypeCached(testHandWithDraw, melds, testHuCount);
           
           if (huType.type !== 'none') {
             const isSpecialHu = ['kuHu', 'qingKuHu', 'kuTaiHu', 'kuChongTaiHu', 'kuChongTaiKa', 'qingKuTaiKa', 'qingKuTaiHu', 'qingKuChongTaiHu', 'qingKuChongTaiKa', 'hongYuan3Jing', 'hongYuan4Jing', 'hongYuan5Jing', 'hongYuan6Jing', 'heiYuan', 'shiDui'].includes(huType.type);
@@ -5375,27 +6040,43 @@ function checkTing(player) {
           }
         }
       }
+      
+      const testCard = createCardByCharacter(singleCard.character);
+      if (testCard) {
+        const testHandWithDraw = [...hand, testCard];
+        const testHuCount = calculateHuCountCached(testHandWithDraw, melds);
+        const huType = detectHuTypeCached(testHandWithDraw, melds, testHuCount);
+        
+        if (huType.type !== 'none' && (huType.type === 'shiDui' || testHuCount >= 11)) {
+          tingCards.push(singleCard.character);
+        }
+      }
     }
-    return { isTing: tingCards.length > 0, tingCards };
+    return { isTing: tingCards.length > 0, tingCards: [...new Set(tingCards)] };
   }
   
   if (basicTing.type === 'fiveGroupsTwoPairs') {
-    // 条件c: 5句/坎/招+2对/1对+1半靠/2半靠
-    // 从"2对/1对+1半靠/2半靠"中找到它们所属的组集合，从集合中能找到一张牌可以实现胡牌
     const pairs = basicTing.pairs || [];
-    const allCharacters = ['上', '大', '人', '丘', '乙', '己', '化', '三', '千', '七', '十', '土', '尔', '小', '生', '八', '九', '子', '佳', '作', '亡', '福', '禄', '寿'];
+    const halfKaos = basicTing.halfKaos || [];
     
-    for (const char of allCharacters) {
-      const testCard = createCardByCharacter(char);
-      if (!testCard) continue;
+    const groupSet = new Set();
+    for (const pair of pairs) {
+      groupSet.add(pair.sentence);
+    }
+    for (let i = 0; i < halfKaos.length; i++) {
+      if (halfKaos[i]) groupSet.add(halfKaos[i].sentence);
+    }
+    
+    for (const sentence of groupSet) {
+      const sentenceChars = getSentenceCharacters(sentence);
       
-      // 检查这张牌是否在pairs所属的组集合中
-      const inPairSentence = pairs.some(p => p.sentence === testCard.sentence);
-      if (inPairSentence) {
-        // 模拟摸牌后能否胡牌
+      for (const char of sentenceChars) {
+        const testCard = createCardByCharacter(char);
+        if (!testCard) continue;
+        
         const testHandWithDraw = [...hand, testCard];
-        const testHuCount = calculateHuCount(testHandWithDraw, melds);
-        const huType = detectHuType(testHandWithDraw, melds, testHuCount);
+        const testHuCount = calculateHuCountCached(testHandWithDraw, melds);
+        const huType = detectHuTypeCached(testHandWithDraw, melds, testHuCount);
         
         if (huType.type !== 'none') {
           const isSpecialHu = ['kuHu', 'qingKuHu', 'kuTaiHu', 'kuChongTaiHu', 'kuChongTaiKa', 'qingKuTaiKa', 'qingKuTaiHu', 'qingKuChongTaiHu', 'qingKuChongTaiKa', 'hongYuan3Jing', 'hongYuan4Jing', 'hongYuan5Jing', 'hongYuan6Jing', 'heiYuan', 'shiDui'].includes(huType.type);
@@ -5405,10 +6086,44 @@ function checkTing(player) {
         }
       }
     }
-    return { isTing: tingCards.length > 0, tingCards };
+    return { isTing: tingCards.length > 0, tingCards: [...new Set(tingCards)] };
   }
   
   return { isTing: false, tingCards: [] };
+}
+
+function getSentenceCharacters(sentence) {
+  const sentenceMap = {
+    1: ['上', '大', '人'],
+    2: ['丘', '乙', '己'],
+    3: ['化', '三', '千'],
+    4: ['七', '十', '土'],
+    5: ['尔', '小', '生'],
+    6: ['八', '九', '子'],
+    7: ['佳', '作', '亡'],
+    8: ['福', '禄', '寿']
+  };
+  return sentenceMap[sentence] || [];
+}
+
+function calculateHuCountCached(hand, melds, huCard = null, isDianPao = false) {
+  const cacheKey = getCacheKey(hand, melds) + '|' + (huCard ? huCard.character : '') + '|' + isDianPao;
+  if (huCountCache.has(cacheKey)) {
+    return huCountCache.get(cacheKey);
+  }
+  const result = calculateHuCount(hand, melds, huCard, isDianPao);
+  huCountCache.set(cacheKey, result);
+  return result;
+}
+
+function detectHuTypeCached(hand, melds, huCount) {
+  const cacheKey = getCacheKey(hand, melds) + '|' + huCount;
+  if (huTypeCache.has(cacheKey)) {
+    return huTypeCache.get(cacheKey);
+  }
+  const result = detectHuType(hand, melds, huCount);
+  huTypeCache.set(cacheKey, result);
+  return result;
 }
 
 // 检查基本听牌条件
@@ -5417,13 +6132,11 @@ function checkBasicTingCondition(hand, melds) {
   console.log('手牌:', hand.map(c => c.character).join(''));
   console.log('melds数量:', melds.length);
   
-  // 计算melds中的组合数
   let meldGroups = 0;
   for (const meld of melds) {
     meldGroups++;
   }
   
-  // 条件a: 手牌9对
   const counts = {};
   for (const card of hand) {
     counts[card.character] = (counts[card.character] || 0) + 1;
@@ -5431,22 +6144,24 @@ function checkBasicTingCondition(hand, melds) {
   
   let pairCount = 0;
   let singleCount = 0;
+  let tripletCount = 0;
+  let quartetCount = 0;
+  
   for (const count of Object.values(counts)) {
-    if (count >= 2) pairCount++;
-    if (count === 1) singleCount++;
-    if (count >= 4) pairCount++; // 4张算2对
+    if (count === 2) pairCount++;
+    else if (count === 3) tripletCount++;
+    else if (count === 4) { quartetCount++; pairCount += 2; }
+    else if (count === 1) singleCount++;
   }
   
-  // 加上melds中的碰和招
   for (const meld of melds) {
-    if (meld.type === 'triplet') pairCount++;
-    if (meld.type === 'quartet') pairCount += 2;
+    if (meld.type === 'triplet') { tripletCount++; pairCount++; }
+    if (meld.type === 'quartet') { quartetCount++; pairCount += 2; }
   }
   
-  console.log('条件a检查: 对数:', pairCount, '单张数:', singleCount);
+  console.log('条件a检查: 对数:', pairCount, '单张数:', singleCount, '坎数:', tripletCount, '招数:', quartetCount);
   
-  if (pairCount >= 9 && singleCount === 1) {
-    // 找出单张牌
+  if (pairCount >= 9 && singleCount <= 2) {
     let singleCard = null;
     for (const card of hand) {
       if (counts[card.character] === 1) {
@@ -5454,12 +6169,10 @@ function checkBasicTingCondition(hand, melds) {
         break;
       }
     }
-    console.log('满足条件a: 9对+1单, 单张:', singleCard?.character);
+    console.log('满足条件a: 9对+单张, 单张:', singleCard?.character);
     return { meets: true, type: 'ninePairs', singleCard };
   }
   
-  // 条件b: 组合牌+手牌 = 6句/坎/招+1单
-  // 需要分析手牌中的组合
   const handAnalysis = analyzeHandForTing(hand, melds);
   
   console.log('条件b检查: 总组合数:', handAnalysis.totalGroups, '单张数:', handAnalysis.singles.length);
@@ -5470,10 +6183,14 @@ function checkBasicTingCondition(hand, melds) {
     return { meets: true, type: 'sixGroupsOneSingle', singleCard: handAnalysis.singles[0] };
   }
   
-  // 条件c: 组合牌+手牌 = 5句/坎/招+2对/1对+1半靠/2半靠
-  if (handAnalysis.totalGroups === 5 && handAnalysis.pairs.length + handAnalysis.halfKaos.length >= 2) {
+  if (handAnalysis.totalGroups === 5 && handAnalysis.pairs.length + Math.floor(handAnalysis.halfKaos.length / 2) >= 2) {
     console.log('满足条件c: 5组合+2对/半靠');
-    return { meets: true, type: 'fiveGroupsTwoPairs', pairs: [...handAnalysis.pairs, ...handAnalysis.halfKaos] };
+    return { meets: true, type: 'fiveGroupsTwoPairs', pairs: [...handAnalysis.pairs, ...handAnalysis.halfKaos], halfKaos: handAnalysis.halfKaos };
+  }
+  
+  if (handAnalysis.totalGroups >= 6 && handAnalysis.pairs.length + Math.floor(handAnalysis.halfKaos.length / 2) >= 1) {
+    console.log('满足条件c变体: 6组合+1对/半靠');
+    return { meets: true, type: 'fiveGroupsTwoPairs', pairs: [...handAnalysis.pairs, ...handAnalysis.halfKaos], halfKaos: handAnalysis.halfKaos };
   }
   
   console.log('不满足任何基本听牌条件');
@@ -5633,9 +6350,38 @@ function calculateXiangTingShu(hand, melds) {
   const analysis = analyzeHandForTing(hand, melds || []);
   const totalGroups = analysis.totalGroups;
   
+  const counts = {};
+  for (const card of hand) {
+    counts[card.character] = (counts[card.character] || 0) + 1;
+  }
+  
+  let pairCount = 0;
+  let singleCount = 0;
+  let tripletCount = 0;
+  let quartetCount = 0;
+  
+  for (const count of Object.values(counts)) {
+    if (count === 2) pairCount++;
+    else if (count === 3) tripletCount++;
+    else if (count === 4) { quartetCount++; pairCount += 2; }
+    else if (count === 1) singleCount++;
+  }
+  
+  for (const meld of (melds || [])) {
+    if (meld.type === 'triplet') { tripletCount++; pairCount++; }
+    if (meld.type === 'quartet') { quartetCount++; pairCount += 2; }
+  }
+  
+  if (pairCount >= 9 && singleCount <= 2) {
+    if (singleCount === 0) return 0;
+    if (singleCount === 1) return 1;
+    return 2;
+  }
+  
   if (totalGroups >= 6) {
     if (analysis.singles.length === 1) return 1;
     if (analysis.pairs.length + analysis.halfKaos.length >= 2) return 1;
+    if (analysis.pairs.length + Math.floor(analysis.halfKaos.length / 2) >= 1) return 2;
     return 2;
   }
   
@@ -5647,7 +6393,14 @@ function calculateXiangTingShu(hand, melds) {
   }
   
   if (totalGroups === 4) {
+    const pairsAndKaos = analysis.pairs.length + Math.floor(analysis.halfKaos.length / 2);
+    if (pairsAndKaos >= 3) return 2;
+    if (pairsAndKaos >= 2) return 3;
     return 3;
+  }
+  
+  if (totalGroups === 3) {
+    return 4;
   }
   
   return Math.max(1, 6 - totalGroups);
@@ -5657,6 +6410,13 @@ function shouldAIChi(player, card) {
   console.log('=== AI吃牌决策分析 ===');
   console.log('玩家:', player.name);
   console.log('吃牌:', card.character);
+  console.log('当前难度:', gameSettings.difficulty);
+  
+  if (gameSettings.difficulty === 'easy') {
+    const shouldChi = Math.random() > 0.5;
+    console.log('简单模式: 随机决策 =', shouldChi);
+    return shouldChi;
+  }
   
   const currentXiangTing = calculateXiangTingShu(player.hand, player.melds);
   console.log('当前向听数:', currentXiangTing);
@@ -5706,9 +6466,45 @@ function shouldAIChi(player, card) {
     return true;
   }
   
-  if (afterChiXiangTing === currentXiangTing && currentXiangTing <= 2) {
+  if (card.sentence === 1 || card.sentence === 8) {
+    if (afterChiXiangTing <= currentXiangTing) {
+      console.log('精句吃牌，向听数不变或减少，吃牌');
+      return true;
+    }
+  }
+  
+  const threshold = gameSettings.difficulty === 'medium' ? 2 : 3;
+  if (afterChiXiangTing === currentXiangTing && currentXiangTing <= threshold) {
     console.log('向听数不变且较低，吃牌');
     return true;
+  }
+  
+  if (gameSettings.difficulty === 'hard') {
+    const beforeTingCards = findTingCards(player.hand, player.melds || []);
+    const afterTingCards = findTingCards(afterChiHand, afterChiMelds);
+    
+    if (afterTingCards.length > beforeTingCards.length) {
+      console.log('吃牌后听牌宽度增加，吃牌');
+      return true;
+    }
+    
+    const simulatedPlayer = { 
+      ...player, 
+      hand: afterChiHand, 
+      melds: afterChiMelds 
+    };
+    const discardIndex = selectAIDiscardHard(simulatedPlayer);
+    const willDiscardCard = afterChiHand[discardIndex];
+    
+    if (willDiscardCard && chiCards.some(c => c.character === willDiscardCard.character)) {
+      console.log('★★★ 吃牌后会出掉刚吃的牌相关牌，不吃！★★★');
+      return false;
+    }
+    
+    if (willDiscardCard && willDiscardCard.sentence === card.sentence) {
+      console.log('★★★ 吃牌后会出掉同组的牌，不吃！★★★');
+      return false;
+    }
   }
   
   console.log('吃牌后向听数不变或增加，不吃');
@@ -5719,6 +6515,13 @@ function shouldAIPeng(player, card) {
   console.log('=== AI碰牌决策分析 ===');
   console.log('玩家:', player.name);
   console.log('碰牌:', card.character);
+  console.log('当前难度:', gameSettings.difficulty);
+  
+  if (gameSettings.difficulty === 'easy') {
+    const shouldPeng = Math.random() > 0.4;
+    console.log('简单模式: 随机决策 =', shouldPeng);
+    return shouldPeng;
+  }
   
   const currentXiangTing = calculateXiangTingShu(player.hand, player.melds);
   console.log('当前向听数:', currentXiangTing);
@@ -5729,7 +6532,6 @@ function shouldAIPeng(player, card) {
     return false;
   }
   
-  const afterPengHand = player.hand.filter(c => c.character !== card.character).slice(0, player.hand.length - 2);
   let removed = 0;
   const afterPengHandCorrect = player.hand.filter(c => {
     if (c.character === card.character && removed < 2) {
@@ -5765,9 +6567,25 @@ function shouldAIPeng(player, card) {
     return true;
   }
   
-  if (afterPengXiangTing === currentXiangTing && currentXiangTing <= 2) {
+  const threshold = gameSettings.difficulty === 'medium' ? 2 : 3;
+  if (afterPengXiangTing === currentXiangTing && currentXiangTing <= threshold) {
     console.log('向听数不变且较低，碰牌');
     return true;
+  }
+  
+  if (gameSettings.difficulty === 'hard') {
+    const beforeHuCount = calculateHuCount(player.hand, player.melds || []);
+    const afterHuCount = calculateHuCount(afterPengHandCorrect, afterPengMelds);
+    
+    if (afterHuCount >= 11 && beforeHuCount < 11) {
+      console.log('碰牌后胡数达标，碰牌');
+      return true;
+    }
+    
+    if (isJingKan && currentXiangTing <= 3) {
+      console.log('精坎碰牌，向听数较低，碰牌');
+      return true;
+    }
   }
   
   console.log('碰牌后向听数增加，不碰');
@@ -5787,6 +6605,25 @@ function shouldAIZhao(player, card) {
   
   console.log('★★★ 可以招牌，必须招！★★★');
   return true;
+}
+
+function findTingCards(hand, melds) {
+  const allCharacters = ['上', '大', '人', '丘', '乙', '己', '化', '三', '千', '七', '十', '土', '尔', '小', '生', '八', '九', '子', '佳', '作', '亡', '福', '禄', '寿'];
+  const tingCards = [];
+  
+  for (const char of allCharacters) {
+    const testCard = createCardByCharacter(char);
+    if (!testCard) continue;
+    
+    const testHand = [...hand, testCard];
+    const tingResult = checkTing({ hand: testHand, melds });
+    
+    if (tingResult.isTing) {
+      tingCards.push(char);
+    }
+  }
+  
+  return tingCards;
 }
 
 function createCardByCharacter(char) {
@@ -5999,11 +6836,12 @@ function showMessage(title, content, isLiuJu = false) {
 }
 
 function closeMessage() {
-  // 防止重复调用
   if (gameState.isClosingMessage) {
+    console.log('closeMessage: 已经在关闭中，跳过');
     return;
   }
   gameState.isClosingMessage = true;
+  console.log('closeMessage: 开始关闭');
   
   const messageArea = document.getElementById('messageArea');
   const isLiuJu = messageArea.dataset.liuju === 'true';
@@ -6032,24 +6870,32 @@ function closeMessage() {
   document.getElementById('player2Melds').innerHTML = '';
   document.getElementById('playedCards').innerHTML = '';
   
-  // 重置胡数显示
   updateHuBadgeDisplay();
   
-  // 如果是流局，开始下一局或显示结算页面
+  console.log('closeMessage: isLiuJu =', isLiuJu, 'roundNumber =', gameState.roundNumber);
+  
   if (isLiuJu) {
     
     if (gameState.roundNumber >= 8) {
       console.log('第8局流局结束，显示结算页面');
-      gameState.isClosingMessage = false;
       showSettlementPage();
+      setTimeout(() => {
+        gameState.isClosingMessage = false;
+      }, 500);
       return;
     }
     
     console.log('流局，开始下一局');
-    // 注意：不在这里重置 isClosingMessage，让 startRound 完成后再重置
     startRound();
-    gameState.isClosingMessage = false;
+    
+    setTimeout(() => {
+      gameState.isClosingMessage = false;
+      console.log('isClosingMessage 已重置');
+    }, 1000);
+    return;
   }
+  
+  gameState.isClosingMessage = false;
 }
 
 // 设置弹窗功能
@@ -6092,6 +6938,7 @@ function updateVolume(value) {
 
 function updateDifficulty(value) {
   gameSettings.difficulty = value;
+  localStorage.setItem('gameDifficulty', value);
   console.log('游戏难度设置为:', value);
 }
 
@@ -6192,13 +7039,11 @@ function closeSettlement() {
   const settlementPage = document.getElementById('settlementPage');
   settlementPage.classList.remove('show');
   
-  // 重置 messageArea 的 liuju 标志，防止滑动事件错误触发 startRound
   const messageArea = document.getElementById('messageArea');
   if (messageArea) {
     messageArea.dataset.liuju = 'false';
   }
   
-  // 完全重置游戏状态
   gameState.roundHistory = [];
   gameState.roundNumber = 0;
   gameState.sessionNumber++;
@@ -6210,7 +7055,11 @@ function closeSettlement() {
   gameState.isMyTurn = false;
   gameState.waitingForResponse = false;
   gameState.currentPlayerIndex = 0;
-  gameState.isHandlingHu = false; // 重置胡牌处理标志
+  gameState.isHandlingHu = false;
+  gameState.isStartingRound = false;
+  gameState.isLiuJuHandled = false;
+  gameState.isClosingMessage = false;
+  gameState.isClosingHuMessage = false;
   gameState.countdown = 0;
   gameState.dealerIndex = 0;
   gameState.canChi = false;
@@ -6225,10 +7074,9 @@ function closeSettlement() {
     gameState.countdownTimer = null;
   }
   
-  // 重置玩家状态
   for (const player of gameState.players) {
     player.score = 0;
-    player.piao = undefined; // 重置为undefined，表示未设置飘分
+    player.piao = undefined;
     player.hand = [];
     player.melds = [];
     player.discards = [];
@@ -6236,10 +7084,8 @@ function closeSettlement() {
     player.tingCards = [];
   }
   
-  // 更新UI
   updateUI();
   
-  // 显示开始屏幕，隐藏游戏容器
   const startScreen = document.getElementById('startScreen');
   const gameContainer = document.querySelector('.game-container');
   const settlementPageEl = document.getElementById('settlementPage');
@@ -6252,26 +7098,25 @@ function closeSettlement() {
   settlementPageEl.style.display = 'none';
   settlementPageEl.classList.remove('show');
   
-  // 更新局数显示
   document.getElementById('roundNum').textContent = '1/8';
   
   console.log('结算页面已关闭，游戏已重置');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  loadGameSettings();
+  
   gameState.deck = createDeck();
   updateUI();
   
   initSwipeToClose();
   
-  // 头像点击事件 - 打开设置
   const myAvatar = document.getElementById('myAvatar');
   if (myAvatar) {
     myAvatar.style.cursor = 'pointer';
     myAvatar.addEventListener('click', openSettings);
   }
   
-  // 启动时间更新
   updateTime();
   setInterval(updateTime, 1000);
 });
