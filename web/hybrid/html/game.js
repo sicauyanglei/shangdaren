@@ -2137,19 +2137,21 @@ function startCountdown() {
     gameState.countdown--;
     updateCountdownUI();
     
-    // 最后10秒时播放"快点吧"，之后使用警告音效
+    // 从20秒开始播放滴答音效
     if (gameState.countdown === 10 && gameState.isMyTurn && !gameState.testMode) {
+      // 最后10秒时播放"快点吧"
       speakText('快点吧');
     } else if (gameState.countdown <= 5 && gameState.countdown > 0) {
       // <=5秒：紧急滴答音效（最急促）
       playTickSound(2);
-    } else if (gameState.countdown > 5 && gameState.countdown < 10) {
+    } else if (gameState.countdown > 5 && gameState.countdown <= 10) {
       // 6-10秒：警告滴答音效
       playTickSound(1);
-    } else if (gameState.countdown > 10) {
-      // >10秒：正常滴答音效
+    } else if (gameState.countdown > 10 && gameState.countdown <= 20) {
+      // 11-20秒：正常滴答音效
       playTickSound(0);
     }
+    // >20秒：不播放音效
     
     if (gameState.countdown <= 0) {
       handleTimeout();
