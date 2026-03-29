@@ -81,7 +81,7 @@ function getLogCount() {
 let gameSettings = {
   volume: 1.0,
   difficulty: 'hard',
-  piaoEnabled: true
+  piaoEnabled: false
 };
 
 // 测试音效函数 - 在控制台输入 testAudio('化') 或 testAudio('八') 来测试
