@@ -529,6 +529,54 @@ function playBeepSound() {
   playSoundEffect('beep');
 }
 
+// 播放倒计时滴答音效
+// level: 0=正常, 1=警告(6-10秒), 2=紧急(<=5秒)
+function playTickSound(level = 0) {
+  if (!audioContext) {
+    initAudioContext();
+  }
+  
+  try {
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    if (level === 2) {
+      // 紧急（<=5秒）：最高频率，方波，最急促
+      oscillator.frequency.value = 1047; // C6
+      oscillator.type = 'square';
+      gainNode.gain.setValueAtTime(gameSettings.volume * 0.35, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.1);
+    } else if (level === 1) {
+      // 警告（6-10秒）：较高频率，方波
+      oscillator.frequency.value = 880; // A5
+      oscillator.type = 'square';
+      gainNode.gain.setValueAtTime(gameSettings.volume * 0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.15);
+    } else {
+      // 正常（>10秒）：柔和滴答声
+      oscillator.frequency.value = 523; // C5
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(gameSettings.volume * 0.15, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.08);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.08);
+    }
+  } catch (e) {
+    console.error('播放滴答音效失败:', e);
+  }
+}
+
 // 播放按钮音效
 async function playButtonSound(text, playerIndex = -1) {
   // 吃/碰/招/胡/自摸/流局 强制播放，不受间隔限制
@@ -656,17 +704,26 @@ async function releaseWakeLock() {
 }
 
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible') {
+  const startScreen = document.getElementById('startScreen');
+  const isGameActive = startScreen && startScreen.classList.contains('hidden');
+  
+  if (document.visibilityState === 'hidden') {
+    // 应用切走，暂停游戏
+    if (isGameActive && !gameState.isPaused) {
+      pauseGame();
+    }
+  } else if (document.visibilityState === 'visible') {
+    // 应用切回，恢复游戏
     await requestWakeLock();
+    
+    if (isGameActive && gameState.isPaused) {
+      resumeGame();
+    }
     
     if (!isMobileDevice()) {
       return;
     }
     
-    const gameContainer = document.querySelector('.game-container');
-    const startScreen = document.getElementById('startScreen');
-    const isGameActive = gameContainer && gameContainer.style.display !== 'none' && 
-                         startScreen && startScreen.classList.contains('hidden');
     const isStartScreenVisible = startScreen && !startScreen.classList.contains('hidden');
     
     if (isGameActive || isStartScreenVisible) {
@@ -693,6 +750,160 @@ document.addEventListener('visibilitychange', async () => {
     }
   }
 });
+
+// 暂停游戏
+function pauseGame() {
+  if (gameState.isPaused) return;
+  
+  console.log('游戏已暂停');
+  gameState.isPaused = true;
+  
+  // 保存并暂停出牌倒计时
+  if (gameState.countdownTimer) {
+    gameState.pausedCountdown = gameState.countdown;
+    clearInterval(gameState.countdownTimer);
+    gameState.countdownTimer = null;
+  }
+  
+  // 保存并暂停飘分倒计时
+  if (piaoCountdownTimer) {
+    gameState.pausedPiaoCountdown = piaoCountdown;
+    gameState.pausedPiaoPlayerIndex = currentPiaoPlayerIndex;
+    gameState.isPiaoPhase = true;
+    clearInterval(piaoCountdownTimer);
+    piaoCountdownTimer = null;
+  }
+  
+  // 显示暂停提示
+  showPauseOverlay();
+}
+
+// 恢复游戏
+function resumeGame() {
+  if (!gameState.isPaused) return;
+  
+  console.log('游戏已恢复');
+  gameState.isPaused = false;
+  
+  // 隐藏暂停提示
+  hidePauseOverlay();
+  
+  // 恢复飘分倒计时（优先处理飘分阶段）
+  if (gameState.isPiaoPhase && gameState.pausedPiaoCountdown > 0) {
+    const savedPiaoPlayerIndex = gameState.pausedPiaoPlayerIndex;
+    piaoCountdown = gameState.pausedPiaoCountdown;
+    
+    // 重新显示飘分弹窗
+    const playerIds = ['player1', 'my', 'player2'];
+    const playerId = playerIds[savedPiaoPlayerIndex];
+    const piaoPopup = document.getElementById(`${playerId}PiaoPopup`);
+    if (piaoPopup) {
+      piaoPopup.classList.remove('hidden');
+    }
+    
+    // 重新显示倒计时
+    showPiaoCountdownTimer(savedPiaoPlayerIndex);
+    updatePiaoCountdownDisplay(savedPiaoPlayerIndex, piaoCountdown);
+    
+    piaoCountdownTimer = setInterval(() => {
+      piaoCountdown--;
+      updatePiaoCountdownDisplay(savedPiaoPlayerIndex, piaoCountdown);
+      
+      if (piaoCountdown <= 3 && piaoCountdown > 0) {
+        playTickSound(2);
+      } else if (piaoCountdown > 3) {
+        playTickSound(1);
+      }
+      
+      if (piaoCountdown <= 0) {
+        clearInterval(piaoCountdownTimer);
+        piaoCountdownTimer = null;
+        setPiao(0);
+      }
+    }, 1000);
+    
+    gameState.isPiaoPhase = false;
+    gameState.pausedPiaoCountdown = 0;
+    gameState.pausedPiaoPlayerIndex = -1;
+    return; // 飘分阶段不恢复出牌倒计时
+  }
+  
+  // 恢复出牌倒计时
+  if (gameState.pausedCountdown > 0) {
+    gameState.countdown = gameState.pausedCountdown;
+    gameState.countdownTimer = setInterval(() => {
+      gameState.countdown--;
+      updateCountdownUI();
+      
+      if (gameState.countdown === 10 && gameState.isMyTurn && !gameState.testMode) {
+        speakText('快点吧');
+      } else if (gameState.countdown <= 5 && gameState.countdown > 0) {
+        playTickSound(2);
+      } else if (gameState.countdown > 5 && gameState.countdown < 10) {
+        playTickSound(1);
+      } else if (gameState.countdown > 10) {
+        playTickSound(0);
+      }
+      
+      if (gameState.countdown <= 0) {
+        handleTimeout();
+      }
+    }, 1000);
+    updateCountdownUI();
+  }
+  
+  // 如果当前是AI的回合且没有在等待响应，继续AI操作
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (currentPlayer && currentPlayer.type === 'ai' && !gameState.waitingForResponse && !gameState.isHandlingHu) {
+    setTimeout(() => {
+      if (!gameState.isPaused && !gameState.isHandlingHu) {
+        processAITurn();
+      }
+    }, 500);
+  }
+}
+
+// 显示暂停遮罩
+function showPauseOverlay() {
+  let overlay = document.getElementById('pauseOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'pauseOverlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      color: #fff;
+      font-size: 2rem;
+      font-weight: bold;
+    `;
+    overlay.innerHTML = `
+      <div style="font-size: 3rem; margin-bottom: 1rem;">⏸️</div>
+      <div>游戏已暂停</div>
+      <div style="font-size: 1rem; margin-top: 1rem; opacity: 0.7;">点击屏幕继续游戏</div>
+    `;
+    overlay.addEventListener('click', resumeGame);
+    document.body.appendChild(overlay);
+  } else {
+    overlay.style.display = 'flex';
+  }
+}
+
+// 隐藏暂停遮罩
+function hidePauseOverlay() {
+  const overlay = document.getElementById('pauseOverlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   requestWakeLock();
@@ -768,7 +979,12 @@ let gameState = {
   multiplierBase: 2,
   playerVoices: ['female', 'male', 'female'],
   roundHistory: [],
-  testMode: false
+  testMode: false,
+  isPaused: false,
+  pausedCountdown: 0,
+  pausedPiaoCountdown: 0,
+  pausedPiaoPlayerIndex: -1,
+  isPiaoPhase: false
 };
 
 function startTestMode() {
@@ -1087,6 +1303,14 @@ function showPlayerPiaoScreen() {
       piaoCountdown--;
       console.log('飘分倒计时:', piaoCountdown);
       updatePiaoCountdownDisplay(currentPiaoPlayerIndex, piaoCountdown);
+      
+      // 播放滴答音效（飘分倒计时较短，使用警告和紧急级别）
+      if (piaoCountdown <= 3 && piaoCountdown > 0) {
+        playTickSound(2); // 紧急
+      } else if (piaoCountdown > 3) {
+        playTickSound(1); // 警告
+      }
+      
       if (piaoCountdown <= 0) {
         console.log('倒计时结束，自动设置飘分为0');
         clearInterval(piaoCountdownTimer);
@@ -1360,6 +1584,12 @@ function startDealingAnimation() {
   const totalCards = 20 + 19 + 19;
   
   const dealNextCard = () => {
+    // 如果游戏暂停，延迟执行
+    if (gameState.isPaused) {
+      setTimeout(dealNextCard, 100);
+      return;
+    }
+    
     let playerIndex = -1;
     
     for (let i = 0; i < 3; i++) {
@@ -1907,8 +2137,18 @@ function startCountdown() {
     gameState.countdown--;
     updateCountdownUI();
     
-    if (gameState.countdown === 5 && gameState.isMyTurn && !gameState.testMode) {
+    // 最后10秒时播放"快点吧"，之后使用警告音效
+    if (gameState.countdown === 10 && gameState.isMyTurn && !gameState.testMode) {
       speakText('快点吧');
+    } else if (gameState.countdown <= 5 && gameState.countdown > 0) {
+      // <=5秒：紧急滴答音效（最急促）
+      playTickSound(2);
+    } else if (gameState.countdown > 5 && gameState.countdown < 10) {
+      // 6-10秒：警告滴答音效
+      playTickSound(1);
+    } else if (gameState.countdown > 10) {
+      // >10秒：正常滴答音效
+      playTickSound(0);
     }
     
     if (gameState.countdown <= 0) {
@@ -1977,6 +2217,11 @@ function handleTimeout() {
 }
 
 function processAITurn() {
+  // 如果游戏暂停，不执行AI操作
+  if (gameState.isPaused) {
+    return;
+  }
+  
   // 如果已经处理了胡牌，不再继续操作
   if (gameState.isHandlingHu) {
     return;
@@ -2003,6 +2248,11 @@ function processAITurn() {
 }
 
 function continueAITurn(player) {
+  // 如果游戏暂停，不执行AI操作
+  if (gameState.isPaused) {
+    return;
+  }
+  
   // 如果已经处理了胡牌，不再继续操作
   if (gameState.isHandlingHu) {
     return;
