@@ -5682,9 +5682,12 @@ function closeHuMessage() {
   document.getElementById('myHandCount').textContent = '0';
   document.getElementById('player2HandCount').textContent = '0';
   
-  animateScoreChange(0, gameState.players[0].score);
-  animateScoreChange(1, gameState.players[1].score);
-  animateScoreChange(2, gameState.players[2].score);
+  // 更新分数显示（不需要动画，直接更新）
+  const scoreIds = ['player1Score', 'myScore', 'player2Score'];
+  for (let i = 0; i < 3; i++) {
+    const scoreEl = document.getElementById(scoreIds[i]);
+    if (scoreEl) scoreEl.textContent = gameState.players[i].score;
+  }
   
   const huBadge = document.getElementById('myHuBadge');
   if (huBadge) huBadge.classList.add('hidden');
@@ -6049,6 +6052,14 @@ function animateScoreChange(playerIndex, newScore, oldScore) {
   const scoreIds = ['player1Score', 'myScore', 'player2Score'];
   const scoreEl = document.getElementById(scoreIds[playerIndex]);
   if (!scoreEl) return;
+  
+  // 确保 oldScore 和 newScore 是有效数字
+  if (typeof oldScore !== 'number' || isNaN(oldScore)) {
+    oldScore = parseInt(scoreEl.textContent) || 0;
+  }
+  if (typeof newScore !== 'number' || isNaN(newScore)) {
+    newScore = oldScore;
+  }
   
   const diff = newScore - oldScore;
   
