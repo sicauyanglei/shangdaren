@@ -5370,16 +5370,6 @@ function handleHu(playerIndex, method) {
     score = loserScore;
   }
   
-  // 触发分数变化动画
-  setTimeout(() => {
-    for (let i = 0; i < gameState.players.length; i++) {
-      const scoreDiff = gameState.players[i].score - scoresBefore[i];
-      if (scoreDiff !== 0) {
-        animateScoreChange(i, gameState.players[i].score);
-      }
-    }
-  }, 300);
-  
   const huTypeName = huResult.huType.name;
   const methodName = method === 'zimo' ? '自摸' : '点炮';
   const dianPaoPlayer = method === 'dianpao' ? gameState.players[gameState.lastDiscardPlayerIndex] : null;
@@ -5432,12 +5422,14 @@ function handleHu(playerIndex, method) {
     console.log('庄家胡牌，庄家不变');
   }
   
-  showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoPlayer, method, huCard, displayMultiplier, loserScores);
-  
+  // 先更新UI（但不更新分数显示），然后显示胡牌弹窗
   updateUI();
+  
+  // 显示胡牌弹窗，传入旧分数用于动画
+  showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoPlayer, method, huCard, displayMultiplier, loserScores, scoresBefore);
 }
 
-function showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoPlayer, method, huCard, multiplier, loserScores) {
+function showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoPlayer, method, huCard, multiplier, loserScores, scoresBefore) {
   // 隐藏听牌徽章和自摸徽章
   const tingBadge = document.getElementById('tingBadge');
   const zimoBadge = document.getElementById('zimoBadge');
@@ -5456,6 +5448,18 @@ function showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoP
   mask.classList.remove('hidden');
   overlay.style.display = 'flex';
   mask.style.display = 'block';
+  
+  // 触发分数变化动画（在弹窗显示后）
+  if (scoresBefore) {
+    setTimeout(() => {
+      for (let i = 0; i < gameState.players.length; i++) {
+        const scoreDiff = gameState.players[i].score - scoresBefore[i];
+        if (scoreDiff !== 0) {
+          animateScoreChange(i, gameState.players[i].score, scoresBefore[i]);
+        }
+      }
+    }, 500);
+  }
   
   let displayHand = [...player.hand];
   let displayHuCard = huCard;
@@ -6041,12 +6045,11 @@ function updateAvatars() {
   });
 }
 
-function animateScoreChange(playerIndex, newScore) {
+function animateScoreChange(playerIndex, newScore, oldScore) {
   const scoreIds = ['player1Score', 'myScore', 'player2Score'];
   const scoreEl = document.getElementById(scoreIds[playerIndex]);
   if (!scoreEl) return;
   
-  const oldScore = parseInt(scoreEl.textContent) || 0;
   const diff = newScore - oldScore;
   
   if (diff === 0) {
@@ -6056,6 +6059,12 @@ function animateScoreChange(playerIndex, newScore) {
   
   const avatarIds = ['player1Avatar', 'myAvatar', 'player2Avatar'];
   const avatarEl = document.getElementById(avatarIds[playerIndex]);
+  
+  // 先显示旧分数，然后动画过渡到新分数
+  scoreEl.textContent = oldScore;
+  
+  // 强制重绘
+  void scoreEl.offsetWidth;
   
   scoreEl.classList.add('score-changing');
   scoreEl.textContent = newScore;
