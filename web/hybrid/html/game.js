@@ -5370,6 +5370,16 @@ function handleHu(playerIndex, method) {
     score = loserScore;
   }
   
+  // 触发分数变化动画
+  setTimeout(() => {
+    for (let i = 0; i < gameState.players.length; i++) {
+      const scoreDiff = gameState.players[i].score - scoresBefore[i];
+      if (scoreDiff !== 0) {
+        animateScoreChange(i, gameState.players[i].score);
+      }
+    }
+  }, 300);
+  
   const huTypeName = huResult.huType.name;
   const methodName = method === 'zimo' ? '自摸' : '点炮';
   const dianPaoPlayer = method === 'dianpao' ? gameState.players[gameState.lastDiscardPlayerIndex] : null;
@@ -6052,8 +6062,21 @@ function animateScoreChange(playerIndex, newScore) {
   
   if (diff > 0) {
     scoreEl.classList.add('score-up');
+    if (avatarEl) {
+      avatarEl.classList.add('winner');
+      setTimeout(() => avatarEl.classList.remove('winner'), 3000);
+    }
   } else {
     scoreEl.classList.add('score-down');
+    if (avatarEl) {
+      avatarEl.classList.add('loser');
+      setTimeout(() => avatarEl.classList.remove('loser'), 500);
+    }
+  }
+  
+  if (avatarEl) {
+    avatarEl.classList.add('score-change');
+    setTimeout(() => avatarEl.classList.remove('score-change'), 600);
   }
   
   const diffEl = document.createElement('span');
