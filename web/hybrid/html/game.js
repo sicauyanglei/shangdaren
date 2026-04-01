@@ -7,7 +7,37 @@ function isWechatBrowser() {
 // 应用微信横屏模式
 function applyWechatLandscapeMode() {
   if (isWechatBrowser()) {
-    document.documentElement.classList.add('wechat-landscape');
+    const html = document.documentElement;
+    const body = document.body;
+    
+    html.classList.add('wechat-landscape');
+    
+    // 动态计算并设置尺寸
+    function updateSize() {
+      const screenWidth = window.screen.width;
+      const screenHeight = window.screen.height;
+      const innerWidth = window.innerWidth;
+      const innerHeight = window.innerHeight;
+      
+      // 使用屏幕尺寸或窗口尺寸中较大的值
+      const width = Math.max(screenWidth, innerWidth, 320);
+      const height = Math.max(screenHeight, innerHeight, 480);
+      
+      // 设置html和body的尺寸
+      html.style.width = height + 'px';
+      html.style.height = width + 'px';
+      body.style.width = height + 'px';
+      body.style.height = width + 'px';
+    }
+    
+    updateSize();
+    
+    // 监听窗口变化
+    window.addEventListener('resize', updateSize);
+    window.addEventListener('orientationchange', function() {
+      setTimeout(updateSize, 100);
+    });
+    
     // 禁用页面滚动
     document.body.style.overflow = 'hidden';
   }
