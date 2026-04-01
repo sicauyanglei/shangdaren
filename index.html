@@ -90,6 +90,21 @@
       color: #aaa;
     }
     
+    .rotate-prompt-close {
+      margin-top: 20px;
+      padding: 10px 30px;
+      background: #2a7a3a;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    
+    .rotate-prompt-close:active {
+      background: #1a5a2a;
+    }
+    
     @media screen and (max-width: 600px) {
       html {
         font-size: 18px;
@@ -2447,6 +2462,7 @@
     </svg>
     <div class="rotate-prompt-text">请横屏游玩</div>
     <div class="rotate-prompt-hint">将手机旋转至横屏模式以获得最佳体验</div>
+    <button class="rotate-prompt-close" onclick="hideRotatePromptForever()">关闭提示</button>
   </div>
   <div id="wechatGuide" class="wechat-guide" style="display: none;">
     <div class="wechat-guide-content">
