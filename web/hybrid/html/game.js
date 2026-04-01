@@ -20,16 +20,32 @@ function hideWechatGuide() {
 
 // 横屏检测
 function isPortrait() {
-  return window.innerHeight > window.innerWidth;
+  const ratio = window.devicePixelRatio || 1;
+  const width = window.innerWidth * ratio;
+  const height = window.innerHeight * ratio;
+  return height > width;
 }
 
 function checkOrientation() {
   const rotatePrompt = document.getElementById('rotatePrompt');
   if (!rotatePrompt) return;
   
-  if (isPortrait()) {
-    rotatePrompt.classList.add('show');
+  // 只在游戏进行中显示横屏提示
+  if (typeof gameState !== 'undefined' && gameState && gameState.gameStarted) {
+    if (isPortrait()) {
+      rotatePrompt.classList.add('show');
+    } else {
+      rotatePrompt.classList.remove('show');
+    }
   } else {
+    rotatePrompt.classList.remove('show');
+  }
+}
+
+// 强制隐藏横屏提示
+function hideRotatePrompt() {
+  const rotatePrompt = document.getElementById('rotatePrompt');
+  if (rotatePrompt) {
     rotatePrompt.classList.remove('show');
   }
 }
@@ -1211,6 +1227,9 @@ function startGame() {
   
   gameContainer.style.display = '';
   
+  gameState.gameStarted = true;
+  checkOrientation();
+  
   enterFullscreenAndLockOrientation().catch(err => {
     console.log('全屏或锁定方向失败:', err);
   });
@@ -1229,6 +1248,9 @@ function startTestFromRound8() {
   startScreen.style.display = 'none';
   
   gameContainer.style.display = '';
+  
+  gameState.gameStarted = true;
+  checkOrientation();
   
   enterFullscreenAndLockOrientation().catch(err => {
     console.log('全屏或锁定方向失败:', err);
