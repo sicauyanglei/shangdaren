@@ -4,6 +4,21 @@ function isWechatBrowser() {
   return ua.includes('micromessenger') || ua.includes('wechat');
 }
 
+// 应用微信横屏模式
+function applyWechatLandscapeMode() {
+  if (isWechatBrowser()) {
+    document.documentElement.classList.add('wechat-landscape');
+    // 禁用页面滚动
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+// 移除微信横屏模式
+function removeWechatLandscapeMode() {
+  document.documentElement.classList.remove('wechat-landscape');
+  document.body.style.overflow = '';
+}
+
 function showWechatGuide() {
   const guide = document.getElementById('wechatGuide');
   if (guide) {
@@ -71,10 +86,10 @@ function isRotatePromptClosedByUser() {
   return false;
 }
 
-// 页面加载时检测微信
+// 页面加载时检测微信并应用横屏模式
 if (isWechatBrowser()) {
   document.addEventListener('DOMContentLoaded', function() {
-    showWechatGuide();
+    applyWechatLandscapeMode();
   });
 }
 
