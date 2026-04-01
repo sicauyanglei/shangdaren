@@ -39,25 +39,8 @@ function isPortrait() {
 }
 
 function checkOrientation() {
-  const rotatePrompt = document.getElementById('rotatePrompt');
-  if (!rotatePrompt) return;
-  
-  // 如果用户已关闭提示，不再显示
-  if (isRotatePromptClosedByUser()) {
-    rotatePrompt.classList.remove('show');
-    return;
-  }
-  
-  // 只在游戏进行中显示横屏提示
-  if (typeof gameState !== 'undefined' && gameState && gameState.gameStarted) {
-    if (isPortrait()) {
-      rotatePrompt.classList.add('show');
-    } else {
-      rotatePrompt.classList.remove('show');
-    }
-  } else {
-    rotatePrompt.classList.remove('show');
-  }
+  // 横屏提示已禁用
+  return;
 }
 
 // 强制隐藏横屏提示
