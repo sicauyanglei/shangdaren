@@ -2021,13 +2021,15 @@
     }
     
     .dealing-text {
+      position: relative;
       font-size: 36px;
       color: #ffd700;
       text-shadow: 0 0 25px rgba(255,215,0,0.6);
-      max-height: calc(100vh - 40px);
+      max-height: calc(100vh - 10px);
       overflow-y: auto;
       min-width: 600px;
-      padding: 30px;
+      padding: 15px;
+      padding-bottom: 45px;
     }
     
     .message-area {
@@ -2123,7 +2125,7 @@
     .settlement-container {
       position: relative;
       background: linear-gradient(135deg, #1a5c2e, #0d3018);
-      padding: 30px 40px;
+      padding: 25px 40px 60px 40px;
       border-radius: 20px;
       border: 3px solid #ffd700;
       box-shadow: 0 0 40px rgba(255,215,0,0.4);
@@ -2142,9 +2144,10 @@
     
     .settlement-content {
       color: #fff;
-      max-height: calc(90vh - 200px);
+      max-height: calc(95vh - 120px);
       overflow-y: auto;
       padding-right: 10px;
+      margin-bottom: 10px;
     }
     
     .settlement-rounds {
@@ -2270,13 +2273,16 @@
     }
     
     .settlement-btn {
-      display: block;
-      width: 100%;
-      margin-top: 20px;
-      padding: 15px 30px;
-      font-size: 20px;
+      display: inline-block;
+      width: auto;
+      min-width: 90px;
+      padding: 6px 18px;
+      font-size: 13px;
       pointer-events: auto;
       z-index: 10;
+      position: absolute;
+      bottom: 12px;
+      right: 15px;
     }
     
     .liuju-hands {
@@ -2328,9 +2334,82 @@
       padding-left: 6px;
       border-left: 2px solid rgba(255,255,255,0.3);
     }
+    
+    .wechat-guide {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .wechat-guide-content {
+      text-align: center;
+      padding: 30px;
+      color: white;
+    }
+    
+    .wechat-guide-logo {
+      width: 100px;
+      height: 100px;
+      margin-bottom: 20px;
+    }
+    
+    .wechat-guide-content h2 {
+      font-size: 24px;
+      margin-bottom: 15px;
+      color: #ffd700;
+    }
+    
+    .wechat-guide-content p {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #ccc;
+    }
+    
+    .wechat-guide-steps {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 20px;
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+    
+    .wechat-guide-steps p {
+      font-size: 14px;
+      color: #fff;
+      margin: 8px 0;
+    }
+    
+    .wechat-guide-btn {
+      background: linear-gradient(135deg, #2e7d32, #1b5e20);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      font-size: 16px;
+      border-radius: 25px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
+  <div id="wechatGuide" class="wechat-guide" style="display: none;">
+    <div class="wechat-guide-content">
+      <img src="logo.png" alt="上大人" class="wechat-guide-logo">
+      <h2>上大人字牌游戏</h2>
+      <p>请在浏览器中打开以获得最佳体验</p>
+      <div class="wechat-guide-steps">
+        <p>1. 点击右上角 "···" 菜单</p>
+        <p>2. 选择 "在浏览器中打开"</p>
+      </div>
+      <button class="wechat-guide-btn" onclick="hideWechatGuide()">继续访问</button>
+    </div>
+  </div>
   <div id="startScreen" class="start-screen">
     <img src="logo.png" alt="上大人" class="start-logo">
     <div class="start-content">
