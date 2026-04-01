@@ -1052,7 +1052,8 @@ let gameState = {
   pausedCountdown: 0,
   pausedPiaoCountdown: 0,
   pausedPiaoPlayerIndex: -1,
-  isPiaoPhase: false
+  isPiaoPhase: false,
+  gameStarted: false
 };
 
 function startTestMode() {
