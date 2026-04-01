@@ -2947,36 +2947,36 @@ function evaluateCardExtreme(card, hand, player) {
   
   if (afterDiscardXiangTing < currentXiangTing) {
     const improvement = currentXiangTing - afterDiscardXiangTing;
-    score -= improvement * 8000;
+    score -= improvement * 1000;
   } else if (afterDiscardXiangTing > currentXiangTing) {
     const penalty = afterDiscardXiangTing - currentXiangTing;
-    score += penalty * 6000;
+    score += penalty * 600;
   }
   
   const tingPrediction = predictTingAfterDiscard(card, hand, playerWithMelds);
   if (tingPrediction.canTing) {
-    let tingBonus = 3000;
-    
+    let tingBonus = 2000;
+
     let totalRemaining = 0;
     let highValueTingCount = 0;
-    
+
     for (const tingChar of tingPrediction.tingCards) {
       const remaining = countRemainingCards(tingChar);
       totalRemaining += remaining;
-      
+
       if (tingChar === '上' || tingChar === '福') {
         highValueTingCount++;
       }
     }
-    
-    tingBonus += totalRemaining * 200;
-    tingBonus += highValueTingCount * 150;
-    
+
+    tingBonus += totalRemaining * 150;
+    tingBonus += highValueTingCount * 100;
+
     const enhancedHuType = predictBestHuTypeEnhanced(tempHand, melds);
     if (enhancedHuType.score > 0) {
-      tingBonus += enhancedHuType.score * 0.8;
+      tingBonus += enhancedHuType.score * 0.5;
     }
-    
+
     score -= tingBonus;
   }
   
@@ -3029,11 +3029,11 @@ function evaluateCardExtreme(card, hand, player) {
   
   const sameCount = hand.filter(c => c.character === card.character).length;
   if (sameCount >= 4) {
-    score += 800;
+    score += 200;
   } else if (sameCount === 3) {
-    score += 700;
+    score += 120;
   } else if (sameCount === 2) {
-    score += 350;
+    score += 50;
   }
   
   const sentenceCards = hand.filter(c => c.sentence === card.sentence);
@@ -3046,7 +3046,7 @@ function evaluateCardExtreme(card, hand, player) {
   if (hasCompleteSentence) {
     score += 400;
     if (card.sentence === 1 || card.sentence === 8) {
-      score += 300;
+      score += 30;
     }
   } else {
     const missingPositions = [0, 1, 2].filter(p => !sentenceChars[p]);
@@ -5237,6 +5237,35 @@ function checkQingHuRemainingCards(hand) {
       if (positions.size === 3) {
         sentenceIndices.forEach(idx => usedIndices.add(idx));
         foundGroup = true;
+      }
+    }
+  }
+  
+  foundGroup = true;
+  while (foundGroup) {
+    foundGroup = false;
+    
+    const counts = {};
+    const indices = {};
+    
+    for (let i = 0; i < cards.length; i++) {
+      if (usedIndices.has(i)) continue;
+      const char = cards[i].character;
+      if (!counts[char]) {
+        counts[char] = 0;
+        indices[char] = [];
+      }
+      counts[char]++;
+      indices[char].push(i);
+    }
+    
+    for (const [char, count] of Object.entries(counts)) {
+      if (count >= 3) {
+        for (let j = 0; j < 3; j++) {
+          usedIndices.add(indices[char][j]);
+        }
+        foundGroup = true;
+        break;
       }
     }
   }
