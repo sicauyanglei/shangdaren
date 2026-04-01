@@ -131,6 +131,23 @@
       font-size: 0.85rem;
     }
     
+    /* 微信横屏模式 - 牌堆居中适配 */
+    html.wechat-landscape .center-area {
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+    }
+    
+    html.wechat-landscape .center-area.dealing-complete {
+      top: 25px !important;
+      left: 120px !important;
+      transform: none !important;
+    }
+    
+    html.wechat-landscape .center-area.dealing-complete .deck-area {
+      transform: scale(0.28) !important;
+    }
+    
     .rotate-prompt {
       position: fixed;
       top: 0;
