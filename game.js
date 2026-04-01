@@ -1,3 +1,30 @@
+// 微信浏览器检测
+function isWechatBrowser() {
+  const ua = navigator.userAgent.toLowerCase();
+  return ua.includes('micromessenger') || ua.includes('wechat');
+}
+
+function showWechatGuide() {
+  const guide = document.getElementById('wechatGuide');
+  if (guide) {
+    guide.style.display = 'flex';
+  }
+}
+
+function hideWechatGuide() {
+  const guide = document.getElementById('wechatGuide');
+  if (guide) {
+    guide.style.display = 'none';
+  }
+}
+
+// 页面加载时检测微信
+if (isWechatBrowser()) {
+  document.addEventListener('DOMContentLoaded', function() {
+    showWechatGuide();
+  });
+}
+
 // 安卓手机音频修复
 let audioContext = null;
 let audioInitialized = false;
