@@ -48,6 +48,28 @@
       font-size: 16px;
     }
     
+    /* 微信浏览器横屏模式 */
+    html.wechat-landscape {
+      width: 100vh;
+      height: 100vw;
+      overflow: hidden;
+    }
+    
+    html.wechat-landscape body {
+      width: 100vh;
+      height: 100vw;
+      transform: rotate(90deg);
+      transform-origin: top left;
+      position: absolute;
+      top: 0;
+      left: 100vw;
+    }
+    
+    html.wechat-landscape .rotate-prompt,
+    html.wechat-landscape .wechat-guide {
+      display: none !important;
+    }
+    
     .rotate-prompt {
       position: fixed;
       top: 0;
