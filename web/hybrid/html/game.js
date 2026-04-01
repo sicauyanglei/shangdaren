@@ -18,12 +18,37 @@ function hideWechatGuide() {
   }
 }
 
+// 横屏检测
+function isPortrait() {
+  return window.innerHeight > window.innerWidth;
+}
+
+function checkOrientation() {
+  const rotatePrompt = document.getElementById('rotatePrompt');
+  if (!rotatePrompt) return;
+  
+  if (isPortrait()) {
+    rotatePrompt.classList.add('show');
+  } else {
+    rotatePrompt.classList.remove('show');
+  }
+}
+
 // 页面加载时检测微信
 if (isWechatBrowser()) {
   document.addEventListener('DOMContentLoaded', function() {
     showWechatGuide();
   });
 }
+
+// 横屏检测初始化
+document.addEventListener('DOMContentLoaded', function() {
+  checkOrientation();
+  window.addEventListener('resize', checkOrientation);
+  window.addEventListener('orientationchange', function() {
+    setTimeout(checkOrientation, 100);
+  });
+});
 
 // 安卓手机音频修复
 let audioContext = null;
