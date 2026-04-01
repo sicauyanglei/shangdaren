@@ -42,6 +42,12 @@ function checkOrientation() {
   const rotatePrompt = document.getElementById('rotatePrompt');
   if (!rotatePrompt) return;
   
+  // 如果用户已关闭提示，不再显示
+  if (isRotatePromptClosedByUser()) {
+    rotatePrompt.classList.remove('show');
+    return;
+  }
+  
   // 只在游戏进行中显示横屏提示
   if (typeof gameState !== 'undefined' && gameState && gameState.gameStarted) {
     if (isPortrait()) {
@@ -60,6 +66,26 @@ function hideRotatePrompt() {
   if (rotatePrompt) {
     rotatePrompt.classList.remove('show');
   }
+}
+
+// 永久隐藏横屏提示（用户主动关闭）
+function hideRotatePromptForever() {
+  const rotatePrompt = document.getElementById('rotatePrompt');
+  if (rotatePrompt) {
+    rotatePrompt.classList.remove('show');
+  }
+  // 记录用户已关闭提示，本次游戏不再显示
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('rotatePromptClosed', 'true');
+  }
+}
+
+// 检查用户是否已关闭横屏提示
+function isRotatePromptClosedByUser() {
+  if (typeof sessionStorage !== 'undefined') {
+    return sessionStorage.getItem('rotatePromptClosed') === 'true';
+  }
+  return false;
 }
 
 // 页面加载时检测微信
