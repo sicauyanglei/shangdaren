@@ -20,6 +20,18 @@ function hideWechatGuide() {
 
 // 横屏检测
 function isPortrait() {
+  // 优先使用 screen.orientation API
+  if (screen.orientation) {
+    const type = screen.orientation.type;
+    return type === 'portrait-primary' || type === 'portrait-secondary';
+  }
+  
+  // 备选方案1: 使用 screen.width/height (物理屏幕尺寸)
+  if (screen.width && screen.height) {
+    return screen.height > screen.width;
+  }
+  
+  // 备选方案2: 使用 window.innerWidth/innerHeight
   const ratio = window.devicePixelRatio || 1;
   const width = window.innerWidth * ratio;
   const height = window.innerHeight * ratio;
