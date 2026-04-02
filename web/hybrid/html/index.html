@@ -2837,6 +2837,17 @@
   </div>
 
   <script src="game.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('./sw.js').then(function(registration) {
+          console.log('ServiceWorker注册成功:', registration.scope);
+        }).catch(function(error) {
+          console.log('ServiceWorker注册失败:', error);
+        });
+      });
+    }
+  </script>
 </body>
 </html>
 
