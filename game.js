@@ -457,6 +457,9 @@ const audioFileMap = {
   '佳': 'jia', '作': 'zuo', '亡': 'wang', '福': 'fu', '禄': 'lu', '寿': 'shou'
 };
 
+// 音频缓存
+const audioCache = new Map();
+
 // 播放本地音频文件
 async function playLocalAudio(text, playerIndex = -1, volumeMultiplier = 1.0) {
   const fileName = audioFileMap[text];
@@ -473,25 +476,34 @@ async function playLocalAudio(text, playerIndex = -1, volumeMultiplier = 1.0) {
     voiceType = gameState.players[idx].voiceType || 'male';
   }
   
-  const audioPath = `audio/${voiceType}/${fileName}.mp3?v=${Date.now()}_v2`;
+  const audioKey = `${voiceType}/${fileName}`;
+  const audioPath = `audio/${audioKey}.mp3`;
   
   return new Promise((resolve) => {
-    const audio = new Audio(audioPath);
+    // 使用缓存的音频对象
+    let audio = audioCache.get(audioKey);
+    if (!audio) {
+      audio = new Audio(audioPath);
+      audioCache.set(audioKey, audio);
+    }
+    
+    // 重置播放位置
+    audio.currentTime = 0;
     // 应用音量倍数，但不超过1.0
     audio.volume = Math.min(gameSettings.volume * volumeMultiplier, 1.0);
     
     let hasResolved = false;
-    let playAttempted = false; // 是否已尝试播放
+    let playAttempted = false;
     
     const timeout = setTimeout(() => {
       if (!hasResolved && !playAttempted) {
         hasResolved = true;
         playWithSpeechSynthesis(text).then(resolve);
       }
-    }, 5000);
+    }, 3000);
     
     audio.onplay = () => {
-      playAttempted = true; // 标记已尝试播放且成功
+      playAttempted = true;
     };
     
     audio.onended = () => {
@@ -503,7 +515,6 @@ async function playLocalAudio(text, playerIndex = -1, volumeMultiplier = 1.0) {
     };
     
     audio.onerror = (e) => {
-      // 只有在播放未成功时才触发备用方案
       if (!hasResolved && !playAttempted) {
         hasResolved = true;
         clearTimeout(timeout);
@@ -511,11 +522,9 @@ async function playLocalAudio(text, playerIndex = -1, volumeMultiplier = 1.0) {
       }
     };
     
-    // 尝试播放
     audio.play().then(() => {
-      playAttempted = true; // 标记已尝试播放
+      playAttempted = true;
     }).catch(e => {
-      // 只有在播放未成功时才触发备用方案
       if (!hasResolved) {
         hasResolved = true;
         clearTimeout(timeout);
