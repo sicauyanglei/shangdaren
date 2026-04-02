@@ -1093,6 +1093,50 @@ const CARD_PINYIN = {
 
 const SPECIAL_CARDS = ['上', '福'];
 
+// 获取玩家区域位置（适配微信横屏模式）
+function getPlayerPosition(playerIndex) {
+  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const centerX = w / 2;
+  const centerY = h / 2;
+  
+  // 微信横屏模式下使用比例计算
+  if (isWechatLandscape) {
+    if (playerIndex === 0) {
+      return { x: w * 0.05, y: centerY - h * 0.08 };
+    } else if (playerIndex === 1) {
+      return { x: centerX - w * 0.02, y: h * 0.75 };
+    } else {
+      return { x: w * 0.9, y: centerY - h * 0.08 };
+    }
+  }
+  
+  // 正常模式
+  if (playerIndex === 0) {
+    return { x: 60, y: centerY - 73 };
+  } else if (playerIndex === 1) {
+    return { x: centerX - 17, y: h - 180 };
+  } else {
+    return { x: w - 95, y: centerY - 73 };
+  }
+}
+
+// 获取牌堆位置
+function getDeckPosition() {
+  const deckStack = document.getElementById('deckStack');
+  if (deckStack) {
+    const rect = deckStack.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2 - 17, y: rect.top };
+  }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+}
+
+// 获取中央位置
+function getCenterPosition() {
+  return { x: window.innerWidth / 2 - 17, y: window.innerHeight / 2 - 73 };
+}
+
 let gameState = {
   deck: [],
   players: [
@@ -4106,23 +4150,13 @@ function discardCard(playerIndex, cardIndex) {
 }
 
 function animateDiscardCard(playerIndex, card) {
-  let startX, startY;
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
+  const playerPos = getPlayerPosition(playerIndex);
+  const startX = playerPos.x;
+  const startY = playerPos.y;
   
-  if (playerIndex === 0) {
-    startX = 60;
-    startY = centerY - 73;
-  } else if (playerIndex === 1) {
-    startX = centerX - 17;
-    startY = window.innerHeight - 180;
-  } else {
-    startX = window.innerWidth - 95;
-    startY = centerY - 73;
-  }
-  
-  const targetX = centerX - 17;
-  const targetY = centerY - 73;
+  const centerPos = getCenterPosition();
+  const targetX = centerPos.x;
+  const targetY = centerPos.y;
   
   const flyingCard = document.createElement('div');
   flyingCard.style.position = 'fixed';
@@ -4165,28 +4199,45 @@ function animateDiscardCard(playerIndex, card) {
 }
 
 function animateMeldCards(playerIndex, cards, meldType, callback) {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
-  
-  const discardX = centerX - 17;
-  const discardY = centerY - 73;
+  const centerPos = getCenterPosition();
+  const discardX = centerPos.x;
+  const discardY = centerPos.y;
   
   const actionButtons = document.getElementById('actionButtons');
-  const actionRect = actionButtons ? actionButtons.getBoundingClientRect() : { left: centerX - 100, top: window.innerHeight - 100, width: 200, height: 44 };
+  const actionRect = actionButtons ? actionButtons.getBoundingClientRect() : { left: window.innerWidth / 2 - 100, top: window.innerHeight - 100, width: 200, height: 44 };
   
   const meldCenterX = actionRect.left + actionRect.width / 2;
   const meldCenterY = actionRect.top - 30;
   
+  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const centerX = w / 2;
+  const centerY = h / 2;
+  
   let targetX, targetY;
-  if (playerIndex === 0) {
-    targetX = 10;
-    targetY = centerY + 50;
-  } else if (playerIndex === 1) {
-    targetX = centerX - 100;
-    targetY = window.innerHeight - 60;
+  if (isWechatLandscape) {
+    if (playerIndex === 0) {
+      targetX = w * 0.02;
+      targetY = centerY + h * 0.05;
+    } else if (playerIndex === 1) {
+      targetX = centerX - w * 0.08;
+      targetY = h * 0.85;
+    } else {
+      targetX = w * 0.88;
+      targetY = centerY + h * 0.05;
+    }
   } else {
-    targetX = window.innerWidth - 110;
-    targetY = centerY + 50;
+    if (playerIndex === 0) {
+      targetX = 10;
+      targetY = centerY + 50;
+    } else if (playerIndex === 1) {
+      targetX = centerX - 100;
+      targetY = h - 60;
+    } else {
+      targetX = w - 110;
+      targetY = centerY + 50;
+    }
   }
   
   const flyingCards = [];
@@ -4307,26 +4358,13 @@ function animateMeldCards(playerIndex, cards, meldType, callback) {
 }
 
 function animateDrawCard(playerIndex, card, callback) {
-  const deckStack = document.getElementById('deckStack');
-  const deckRect = deckStack ? deckStack.getBoundingClientRect() : { left: window.innerWidth / 2, top: window.innerHeight / 2 };
+  const deckPos = getDeckPosition();
+  const startX = deckPos.x;
+  const startY = deckPos.y;
   
-  const startX = deckRect.left + deckRect.width / 2 - 17;
-  const startY = deckRect.top;
-  
-  let targetX, targetY;
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
-  
-  if (playerIndex === 0) {
-    targetX = 60;
-    targetY = centerY - 73;
-  } else if (playerIndex === 1) {
-    targetX = centerX - 17;
-    targetY = window.innerHeight - 180;
-  } else {
-    targetX = window.innerWidth - 95;
-    targetY = centerY - 73;
-  }
+  const playerPos = getPlayerPosition(playerIndex);
+  const targetX = playerPos.x;
+  const targetY = playerPos.y;
   
   const flyingCard = document.createElement('div');
   flyingCard.style.position = 'fixed';
