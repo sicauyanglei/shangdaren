@@ -1096,23 +1096,36 @@ const SPECIAL_CARDS = ['上', '福'];
 // 获取玩家区域位置（适配微信横屏模式）
 function getPlayerPosition(playerIndex) {
   const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  
+  // 微信横屏模式：CSS旋转后，坐标系需要交换
+  // 视觉宽度 = window.innerHeight, 视觉高度 = window.innerWidth
+  if (isWechatLandscape) {
+    const visualW = window.innerHeight;
+    const visualH = window.innerWidth;
+    const centerX = visualW / 2;
+    const centerY = visualH / 2;
+    
+    // 旋转后玩家位置映射：
+    // player0(原左边) -> 上边, player1(原下边) -> 右边, player2(原右边) -> 下边
+    // 但由于是fixed定位+旋转，需要用原始坐标系
+    if (playerIndex === 0) {
+      // 原左边玩家 -> 旋转后视觉上边，但fixed坐标还是原左边位置
+      return { x: 30, y: centerY - 50 };
+    } else if (playerIndex === 1) {
+      // 原下边玩家 -> 旋转后视觉右边
+      return { x: centerX - 20, y: window.innerHeight - 100 };
+    } else {
+      // 原右边玩家 -> 旋转后视觉下边
+      return { x: window.innerWidth - 60, y: centerY - 50 };
+    }
+  }
+  
+  // 正常模式
   const w = window.innerWidth;
   const h = window.innerHeight;
   const centerX = w / 2;
   const centerY = h / 2;
   
-  // 微信横屏模式下使用比例计算
-  if (isWechatLandscape) {
-    if (playerIndex === 0) {
-      return { x: w * 0.05, y: centerY - h * 0.08 };
-    } else if (playerIndex === 1) {
-      return { x: centerX - w * 0.02, y: h * 0.75 };
-    } else {
-      return { x: w * 0.9, y: centerY - h * 0.08 };
-    }
-  }
-  
-  // 正常模式
   if (playerIndex === 0) {
     return { x: 60, y: centerY - 73 };
   } else if (playerIndex === 1) {
@@ -1129,11 +1142,19 @@ function getDeckPosition() {
     const rect = deckStack.getBoundingClientRect();
     return { x: rect.left + rect.width / 2 - 17, y: rect.top };
   }
+  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  if (isWechatLandscape) {
+    return { x: window.innerHeight * 0.15, y: window.innerWidth * 0.1 };
+  }
   return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 }
 
 // 获取中央位置
 function getCenterPosition() {
+  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  if (isWechatLandscape) {
+    return { x: window.innerHeight / 2 - 17, y: window.innerWidth / 2 - 73 };
+  }
   return { x: window.innerWidth / 2 - 17, y: window.innerHeight / 2 - 73 };
 }
 
@@ -4150,6 +4171,13 @@ function discardCard(playerIndex, cardIndex) {
 }
 
 function animateDiscardCard(playerIndex, card) {
+  // 微信横屏模式下跳过动画，直接显示
+  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  if (isWechatLandscape) {
+    showDiscardedCard(playerIndex, card);
+    return;
+  }
+  
   const playerPos = getPlayerPosition(playerIndex);
   const startX = playerPos.x;
   const startY = playerPos.y;
@@ -4199,6 +4227,13 @@ function animateDiscardCard(playerIndex, card) {
 }
 
 function animateMeldCards(playerIndex, cards, meldType, callback) {
+  // 微信横屏模式下跳过动画，直接执行回调
+  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  if (isWechatLandscape) {
+    if (callback) callback();
+    return;
+  }
+  
   const centerPos = getCenterPosition();
   const discardX = centerPos.x;
   const discardY = centerPos.y;
@@ -4209,35 +4244,21 @@ function animateMeldCards(playerIndex, cards, meldType, callback) {
   const meldCenterX = actionRect.left + actionRect.width / 2;
   const meldCenterY = actionRect.top - 30;
   
-  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
   const w = window.innerWidth;
   const h = window.innerHeight;
   const centerX = w / 2;
   const centerY = h / 2;
   
   let targetX, targetY;
-  if (isWechatLandscape) {
-    if (playerIndex === 0) {
-      targetX = w * 0.02;
-      targetY = centerY + h * 0.05;
-    } else if (playerIndex === 1) {
-      targetX = centerX - w * 0.08;
-      targetY = h * 0.85;
-    } else {
-      targetX = w * 0.88;
-      targetY = centerY + h * 0.05;
-    }
+  if (playerIndex === 0) {
+    targetX = 10;
+    targetY = centerY + 50;
+  } else if (playerIndex === 1) {
+    targetX = centerX - 100;
+    targetY = h - 60;
   } else {
-    if (playerIndex === 0) {
-      targetX = 10;
-      targetY = centerY + 50;
-    } else if (playerIndex === 1) {
-      targetX = centerX - 100;
-      targetY = h - 60;
-    } else {
-      targetX = w - 110;
-      targetY = centerY + 50;
-    }
+    targetX = w - 110;
+    targetY = centerY + 50;
   }
   
   const flyingCards = [];
@@ -4358,6 +4379,13 @@ function animateMeldCards(playerIndex, cards, meldType, callback) {
 }
 
 function animateDrawCard(playerIndex, card, callback) {
+  // 微信横屏模式下跳过动画，直接执行回调
+  const isWechatLandscape = document.documentElement.classList.contains('wechat-landscape');
+  if (isWechatLandscape) {
+    if (callback) callback();
+    return;
+  }
+  
   const deckPos = getDeckPosition();
   const startX = deckPos.x;
   const startY = deckPos.y;
