@@ -362,17 +362,802 @@ async function enterFullscreenAndLockOrientation() {
 
 function startGame() {
   initAudio();
-  
-  // 先隐藏开始屏幕
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const gameMode = urlParams.get('mode') || localStorage.getItem('multiplayer_mode');
+
+  if (gameMode === 'multiplayer') {
+    startMultiplayerGame();
+    return;
+  }
+
   document.getElementById('startScreen').classList.add('hidden');
-  
-  // 尝试进入全屏和锁定方向，但不等待结果
+
   enterFullscreenAndLockOrientation().catch(err => {
     console.log('全屏或锁定方向失败:', err);
   });
-  
-  // 直接开始游戏
+
   startRound();
+}
+
+let multiplayerWs = null;
+let multiplayerPlayers = [];
+let isMultiplayerHost = false;
+let isMultiplayerMode = false;
+let mySeatIndex = -1;
+let lastSeq = 0;
+let reconnectAttempts = 0;
+let pendingAction = null; // 当前等待的响应动作
+let piaoResults = [null, null, null];
+
+function startMultiplayerGame() {
+  const myPlayerId = localStorage.getItem('my_player_id');
+
+  if (!myPlayerId) {
+    alert('未登录，请先登录');
+    window.location.href = 'login.html';
+    return;
+  }
+
+  isMultiplayerMode = true;
+  console.log('My player ID:', myPlayerId);
+
+  initMultiplayerWebSocket();
+}
+
+function initMultiplayerWebSocket() {
+  const WS_URL = 'ws://localhost:8081';
+
+  // 关闭现有连接
+  if (multiplayerWs) {
+    multiplayerWs.close();
+    multiplayerWs = null;
+  }
+
+  multiplayerWs = new WebSocket(WS_URL);
+
+  multiplayerWs.onopen = () => {
+    console.log('Multiplayer WebSocket connected');
+    reconnectAttempts = 0;
+
+    multiplayerWs.send(JSON.stringify({
+      type: 'auth',
+      playerId: localStorage.getItem('my_player_id'),
+      playerName: localStorage.getItem('player_name') || '玩家'
+    }));
+
+    // 如果在房间里，尝试重连
+    const savedRoomId = localStorage.getItem('current_room_id');
+    if (savedRoomId) {
+      setTimeout(() => {
+        multiplayerWs.send(JSON.stringify({
+          type: 'game:reconnect',
+          roomId: parseInt(savedRoomId),
+          playerId: localStorage.getItem('my_player_id')
+        }));
+      }, 100);
+    } else {
+      setTimeout(() => {
+        multiplayerWs.send(JSON.stringify({ type: 'room:list' }));
+      }, 100);
+    }
+
+    // 启动心跳
+    startHeartbeat();
+  };
+
+  multiplayerWs.onmessage = (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      handleMultiplayerMessage(message);
+    } catch (e) {
+      console.error('Error parsing multiplayer message:', e);
+    }
+  };
+
+  multiplayerWs.onclose = () => {
+    console.log('Multiplayer WebSocket disconnected');
+    stopHeartbeat();
+
+    // 尝试重连
+    if (isMultiplayerMode && reconnectAttempts < 10) {
+      reconnectAttempts++;
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+      console.log(`${delay/1000}秒后尝试重连...`);
+      setTimeout(() => {
+        if (isMultiplayerMode) {
+          initMultiplayerWebSocket();
+        }
+      }, delay);
+    }
+  };
+
+  multiplayerWs.onerror = (error) => {
+    console.error('Multiplayer WebSocket error:', error);
+  };
+}
+
+let heartbeatTimer = null;
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    if (multiplayerWs && multiplayerWs.readyState === WebSocket.OPEN) {
+      multiplayerWs.send(JSON.stringify({ type: 'room:heartbeat' }));
+    }
+  }, 25000);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function handleMultiplayerMessage(message) {
+  console.log('Multiplayer message:', message);
+
+  // 检查消息序列号
+  if (message.seq !== undefined) {
+    if (message.seq <= lastSeq) {
+      console.log('重复消息，忽略:', message.seq);
+      return;
+    }
+    lastSeq = message.seq;
+  }
+
+  switch (message.type) {
+    case 'room:game:start':
+      // 旧协议：直接进入游戏页面，等待游戏开始消息
+      document.getElementById('startScreen').classList.add('hidden');
+      enterFullscreenAndLockOrientation().catch(err => {});
+      break;
+
+    case 'room:player:left':
+      showToast('有玩家离开了', 'error');
+      break;
+
+    // ========== 游戏核心消息 ==========
+
+    case 'game:start':
+      handleGameStart(message);
+      break;
+
+    case 'game:piao:turn':
+      handlePiaoTurn(message);
+      break;
+
+    case 'game:piao:result':
+      handlePiaoResult(message);
+      break;
+
+    case 'game:turn':
+      handleTurn(message);
+      break;
+
+    case 'game:draw':
+      handleDraw(message);
+      break;
+
+    case 'game:discard':
+      handleDiscard(message);
+      break;
+
+    case 'game:action:result':
+      handleActionResult(message);
+      break;
+
+    case 'game:response:query':
+      handleResponseQuery(message);
+      break;
+
+    case 'game:hu':
+      handleHu(message);
+      break;
+
+    case 'game:liuju':
+      handleLiuJu(message);
+      break;
+
+    case 'game:sync':
+      handleGameSync(message);
+      break;
+
+    case 'game:player:disconnect':
+      handlePlayerDisconnect(message);
+      break;
+
+    case 'game:error':
+      showToast(message.message || '游戏错误', 'error');
+      break;
+
+    case 'game:end':
+      handleGameEnd(message);
+      break;
+
+    case 'room:update':
+      // 房间更新，忽略
+      break;
+  }
+}
+
+// ==================== 游戏消息处理 ====================
+
+function handleGameStart(msg) {
+  document.getElementById('startScreen').classList.add('hidden');
+  enterFullscreenAndLockOrientation().catch(err => {});
+
+  // 初始化玩家
+  gameState.players = msg.players.map((p, i) => ({
+    id: p.id,
+    name: p.name,
+    type: i === msg.mySeatIndex ? 'human' : 'remote',
+    hand: [],
+    melds: [],
+    discards: [],
+    score: p.score || 0,
+    piao: 0,
+    isTing: false,
+    seatIndex: i
+  }));
+
+  mySeatIndex = msg.mySeatIndex;
+  isMultiplayerMode = true;
+
+  // 保存玩家信息到 localStorage
+  localStorage.setItem('my_player_id', msg.players[mySeatIndex].id);
+
+  gameState.dealerIndex = msg.dealerIndex;
+  gameState.deck = [];
+  piaoResults = msg.piaoResults || [null, null, null];
+
+  updateUI();
+  showToast('游戏开始！', 'success');
+}
+
+function handlePiaoTurn(msg) {
+  gameState.isPiaoPhase = true;
+  pendingAction = { type: 'piao', deadline: msg.deadline };
+
+  if (msg.playerIndex === mySeatIndex) {
+    // 轮到自己飘分
+    showPiaoSelection();
+  }
+}
+
+function handlePiaoResult(msg) {
+  piaoResults[msg.playerIndex] = msg.piao;
+
+  if (msg.playerIndex === mySeatIndex) {
+    gameState.players[mySeatIndex].piao = msg.piao;
+    hidePiaoSelection();
+  }
+
+  updatePlayerPiaoBadge(msg.playerIndex, msg.piao);
+  pendingAction = null;
+}
+
+function showPiaoSelection() {
+  let popup = document.getElementById('myPiaoPopup');
+  if (!popup) {
+    // 创建飘分选择弹窗
+    const playerRow = document.querySelector('.player-row-my');
+    if (playerRow) {
+      popup = document.createElement('div');
+      popup.id = 'myPiaoPopup';
+      popup.className = 'piao-setting-popup';
+      popup.innerHTML = `
+        <div class="piao-popup-content">
+          <div class="piao-popup-prompt">请选择飘分</div>
+          <div class="piao-options">
+            <button class="btn btn-secondary piao-btn" onclick="sendPiao(0)">0</button>
+            <button class="btn btn-primary piao-btn" onclick="sendPiao(5)">5</button>
+            <button class="btn btn-warning piao-btn" onclick="sendPiao(10)">10</button>
+            <button class="btn btn-danger piao-btn" onclick="sendPiao(20)">20</button>
+          </div>
+        </div>
+      `;
+      playerRow.appendChild(popup);
+    }
+  }
+
+  if (popup) {
+    popup.classList.remove('hidden');
+  }
+}
+
+function hidePiaoSelection() {
+  const popup = document.getElementById('myPiaoPopup');
+  if (popup) {
+    popup.classList.add('hidden');
+  }
+}
+
+function sendPiao(value) {
+  hidePiaoSelection();
+  sendMultiplayerMessage({ type: 'game:piao', piao: value });
+}
+
+function updatePlayerPiaoBadge(playerIndex, piao) {
+  const playerIds = ['player1', 'my', 'player2'];
+  const playerId = playerIds[playerIndex];
+  const badge = document.getElementById(`${playerId}Piao`);
+  if (badge) {
+    badge.textContent = `飘${piao}`;
+    badge.classList.remove('hidden');
+  }
+}
+
+function handleTurn(msg) {
+  gameState.currentPlayerIndex = msg.playerIndex;
+  gameState.deck = Array(msg.deckCount).fill({}); // 简化：牌堆数量
+  gameState.countdown = Math.floor((msg.deadline - Date.now()) / 1000);
+  pendingAction = null;
+
+  updateCurrentPlayerUI();
+
+  if (msg.playerIndex === mySeatIndex) {
+    // 是我的回合
+    gameState.isMyTurn = true;
+    startCountdown();
+    enableDiscard();
+  } else {
+    gameState.isMyTurn = false;
+    stopCountdown();
+    disableDiscard();
+  }
+}
+
+function handleDraw(msg) {
+  const player = gameState.players[msg.playerIndex];
+  player.hand.push(msg.card);
+
+  if (msg.playerIndex === mySeatIndex) {
+    showToast(`摸到: ${msg.card.character}`, 'info');
+  }
+
+  gameState.deck = Array(msg.deckCount).fill({});
+  updateUI();
+}
+
+function handleDiscard(msg) {
+  const player = gameState.players[msg.playerIndex];
+  const cardIndex = player.hand.findIndex(c => c.id === msg.card.id);
+  if (cardIndex !== -1) {
+    player.hand.splice(cardIndex, 1);
+  }
+  player.discards.push(msg.card);
+  gameState.lastDiscardedCard = msg.card;
+  gameState.lastDiscardPlayerIndex = msg.playerIndex;
+  gameState.deck = Array(msg.deckCount).fill({});
+
+  playDiscardSound(msg.card, msg.playerIndex);
+  animateDiscardCard(msg.playerIndex, msg.card, () => {});
+
+  updateUI();
+
+  if (msg.playerIndex === mySeatIndex) {
+    gameState.isMyTurn = false;
+    gameState.selectedCardIndex = -1;
+    stopCountdown();
+  }
+}
+
+function handleActionResult(msg) {
+  const player = gameState.players[msg.playerIndex];
+
+  if (msg.action === 'chi' && msg.meld) {
+    player.melds.push({
+      type: 'sequence',
+      cards: msg.meld.cards,
+      source: 'chi'
+    });
+  } else if (msg.action === 'peng' && msg.meld) {
+    player.melds.push({
+      type: 'triplet',
+      cards: msg.meld.cards,
+      source: 'peng'
+    });
+  } else if (msg.action === 'zhao' && msg.meld) {
+    player.melds.push({
+      type: 'quartet',
+      cards: msg.meld.cards,
+      source: 'zhao'
+    });
+  }
+
+  removeLastDiscard();
+  gameState.lastDiscardedCard = null;
+  pendingAction = null;
+
+  updateUI();
+  playButtonSound(msg.action);
+}
+
+function handleResponseQuery(msg) {
+  pendingAction = {
+    type: 'response',
+    card: msg.card,
+    responses: msg.responses,
+    deadline: msg.deadline,
+    allowedPlayers: msg.responses.filter(r => {
+      if (r.playerIndex === mySeatIndex) {
+        return r.canHu || r.canZhao || r.canPeng || r.canChi;
+      }
+      return false;
+    }).map(r => r.playerIndex)
+  };
+
+  if (pendingAction.allowedPlayers.includes(mySeatIndex)) {
+    // 显示响应按钮
+    const response = msg.responses.find(r => r.playerIndex === mySeatIndex);
+    showResponseButtons(response);
+  }
+}
+
+function showResponseButtons(response) {
+  clearActionButtons();
+
+  const container = document.getElementById('actionButtons');
+  if (!container) return;
+
+  if (response.canChi) {
+    addActionButton('吃', () => sendAction('chi'));
+  }
+  if (response.canPeng) {
+    addActionButton('碰', () => sendAction('peng'));
+  }
+  if (response.canZhao) {
+    addActionButton('招', () => sendAction('zhao'));
+  }
+  if (response.canHu) {
+    addActionButton('胡', () => sendAction('hu'));
+  }
+
+  addActionButton('过', () => sendAction('pass'));
+}
+
+function addActionButton(text, onClick) {
+  const container = document.getElementById('actionButtons');
+  if (!container) return;
+
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-primary';
+  btn.textContent = text;
+  btn.onclick = onClick;
+  container.appendChild(btn);
+}
+
+function clearActionButtons() {
+  const container = document.getElementById('actionButtons');
+  if (container) {
+    container.innerHTML = '';
+  }
+}
+
+function sendAction(action, cardChar) {
+  clearActionButtons();
+  sendMultiplayerMessage({
+    type: 'game:action',
+    action: action,
+    cardChar: cardChar
+  });
+  pendingAction = null;
+}
+
+function handleHu(msg) {
+  const winner = gameState.players[msg.playerIndex];
+  winner.score += msg.settlements[msg.playerIndex].score;
+
+  // 显示胡牌效果
+  showHuEffect(msg.playerIndex, msg.isZimo);
+
+  setTimeout(() => {
+    showSettlement([msg]);
+  }, 2000);
+}
+
+function handleLiuJu(msg) {
+  showToast('流局！', 'info');
+}
+
+function handleGameSync(msg) {
+  if (!msg.success) {
+    showToast('重连失败', 'error');
+    return;
+  }
+
+  const gs = msg.gameState;
+  isMultiplayerMode = true;
+  mySeatIndex = gs.mySeatIndex;
+
+  gameState.players = gs.players.map((p, i) => ({
+    id: p.id,
+    name: p.name,
+    type: i === mySeatIndex ? 'human' : 'remote',
+    hand: [],
+    melds: p.melds || [],
+    discards: p.discards || [],
+    score: p.score || 0,
+    piao: p.piao || 0,
+    isTing: p.isTing || false,
+    seatIndex: i
+  }));
+
+  gameState.dealerIndex = gs.dealerIndex;
+  gameState.currentPlayerIndex = gs.currentPlayerIndex;
+  gameState.lastDiscardedCard = gs.lastDiscardedCard;
+  gameState.lastDiscardPlayerIndex = gs.lastDiscardPlayerIndex;
+  gameState.deck = Array(gs.deckCount).fill({});
+  gameState.roundNumber = gs.roundNumber;
+  piaoResults = gs.piaoResults || [null, null, null];
+  pendingAction = gs.pendingAction;
+
+  if (gs.myHand) {
+    gameState.players[mySeatIndex].hand = gs.myHand;
+  }
+
+  updateUI();
+  showToast('重连成功', 'success');
+}
+
+function handlePlayerDisconnect(msg) {
+  showToast(`玩家 ${gameState.players[msg.playerIndex]?.name || msg.playerId} 断线了`, 'warning');
+}
+
+function handleGameEnd(msg) {
+  isMultiplayerMode = false;
+  showToast('游戏结束！', 'info');
+
+  // 显示最终分数
+  let content = '<div class="settlement-title">游戏结束</div>';
+  content += '<div class="settlement-content">';
+  content += '<div class="total-scores">';
+
+  const sortedPlayers = [...msg.players].sort((a, b) => b.totalScore - a.totalScore);
+  sortedPlayers.forEach((p, i) => {
+    const isWinner = i === 0;
+    content += `<div class="player-total ${isWinner ? 'winner' : ''}">
+      <span class="player-name">${p.name}</span>
+      <span class="player-score">${p.totalScore}分</span>
+    </div>`;
+  });
+
+  content += '</div></div>';
+
+  document.getElementById('settlementContent').innerHTML = content;
+  document.getElementById('settlementPage').classList.add('show');
+}
+
+// ==================== 多人游戏发送消息 ====================
+
+function sendMultiplayerMessage(msg) {
+  if (multiplayerWs && multiplayerWs.readyState === WebSocket.OPEN) {
+    msg.seq = Date.now();
+    multiplayerWs.send(JSON.stringify(msg));
+    console.log('Sent:', msg.type, msg);
+  } else {
+    console.error('WebSocket未连接');
+  }
+}
+
+// 多人模式下出牌
+function sendDiscard(cardIndex, cardChar) {
+  sendMultiplayerMessage({
+    type: 'game:action',
+    action: 'discard',
+    cardIndex: cardIndex,
+    cardChar: cardChar
+  });
+}
+
+// 多人模式下摸牌请求
+function sendDrawRequest() {
+  sendMultiplayerMessage({ type: 'game:draw' });
+}
+
+// ==================== 多人模式下的操作覆盖 ====================
+
+// 覆盖原 discardCard 函数以支持网络同步
+const originalDiscardCard = discardCard;
+discardCard = function(playerIndex, cardIndex) {
+  if (isMultiplayerMode && playerIndex === mySeatIndex) {
+    const card = gameState.players[playerIndex].hand[cardIndex];
+    sendDiscard(cardIndex, card ? card.character : null);
+    // 本地立即更新UI（乐观更新）
+    originalDiscardCard.call(this, playerIndex, cardIndex);
+  } else {
+    originalDiscardCard.call(this, playerIndex, cardIndex);
+  }
+};
+
+// 覆盖 performChi 函数以支持网络同步
+const originalPerformChi = performChi;
+performChi = function(playerIndex) {
+  if (isMultiplayerMode && playerIndex === mySeatIndex) {
+    sendAction('chi');
+  }
+  originalPerformChi.call(this, playerIndex);
+};
+
+// 覆盖 performPeng 函数以支持网络同步
+const originalPerformPeng = performPeng;
+performPeng = function(playerIndex) {
+  if (isMultiplayerMode && playerIndex === mySeatIndex) {
+    sendAction('peng');
+  }
+  originalPerformPeng.call(this, playerIndex);
+};
+
+// 覆盖 performZhao 函数以支持网络同步
+const originalPerformZhao = performZhao;
+performZhao = function(playerIndex, char) {
+  if (isMultiplayerMode && playerIndex === mySeatIndex) {
+    sendAction('zhao', char);
+  }
+  originalPerformZhao.call(this, playerIndex, char);
+};
+
+// ==================== UI 辅助函数 ====================
+
+function enableDiscard() {
+  const cards = document.querySelectorAll('#myHand .card');
+  cards.forEach(card => {
+    card.style.pointerEvents = 'auto';
+    card.classList.add('can-discard');
+  });
+}
+
+function disableDiscard() {
+  const cards = document.querySelectorAll('#myHand .card');
+  cards.forEach(card => {
+    card.style.pointerEvents = 'none';
+    card.classList.remove('can-discard');
+  });
+}
+
+function startCountdown() {
+  stopCountdown();
+  gameState.countdownTimer = setInterval(() => {
+    gameState.countdown--;
+    updateCountdownDisplay();
+    if (gameState.countdown <= 0) {
+      handleTimeout();
+    }
+  }, 1000);
+}
+
+function stopCountdown() {
+  if (gameState.countdownTimer) {
+    clearInterval(gameState.countdownTimer);
+    gameState.countdownTimer = null;
+  }
+}
+
+function updateCountdownDisplay() {
+  let countdownEl = document.querySelector('.countdown');
+  if (!countdownEl) {
+    const roundInfo = document.querySelector('.round-info');
+    if (roundInfo) {
+      countdownEl = document.createElement('span');
+      countdownEl.className = 'countdown';
+      roundInfo.appendChild(countdownEl);
+    }
+  }
+  if (countdownEl) {
+    countdownEl.textContent = gameState.countdown + 's';
+    countdownEl.classList.toggle('warning', gameState.countdown <= 10);
+  }
+}
+
+function handleTimeout() {
+  stopCountdown();
+  if (isMultiplayerMode && mySeatIndex === gameState.currentPlayerIndex) {
+    // 超时默认出最后一张牌
+    const player = gameState.players[mySeatIndex];
+    if (player.hand.length > 0) {
+      const lastCard = player.hand[player.hand.length - 1];
+      const cardIndex = player.hand.length - 1;
+      discardCard(mySeatIndex, cardIndex);
+    }
+  }
+}
+
+function showHuEffect(playerIndex, isZimo) {
+  const playerIds = ['player1', 'my', 'player2'];
+  const avatarEl = document.getElementById(`${playerIds[playerIndex]}Avatar`);
+  if (avatarEl) {
+    avatarEl.classList.add('winner');
+    setTimeout(() => avatarEl.classList.remove('winner'), 3000);
+  }
+
+  const zimoBadge = document.getElementById('zimoBadge');
+  if (zimoBadge) {
+    zimoBadge.textContent = isZimo ? '自摸!' : '胡!';
+    zimoBadge.classList.remove('hidden');
+    setTimeout(() => zimoBadge.classList.add('hidden'), 3000);
+  }
+}
+
+function showSettlement(roundResults) {
+  let content = '<div class="settlement-title">第' + gameState.roundNumber + '回合结算</div>';
+  content += '<div class="settlement-content">';
+
+  roundResults.forEach(result => {
+    if (result.winner !== undefined) {
+      content += `<div class="settlement-round">
+        <div class="round-header">${gameState.players[result.winner]?.name || '未知'} 胡牌</div>
+        <div class="round-result">`;
+      if (result.huType) {
+        content += `<span class="hu-type">${result.huType}</span> `;
+      }
+      content += `<span class="score">+${result.score}分</span>`;
+      content += `</div></div>`;
+    }
+  });
+
+  content += '</div>';
+  document.getElementById('settlementContent').innerHTML = content;
+  document.getElementById('settlementPage').classList.add('show');
+}
+
+function initMultiplayerPlayers(serverPlayers) {
+  const myPlayerId = localStorage.getItem('my_player_id');
+
+  const myIndex = serverPlayers.findIndex(p => p.id === myPlayerId);
+  let orderedPlayers = [];
+
+  for (let i = 0; i < 3; i++) {
+    const playerIndex = (myIndex + i) % 3;
+    const serverPlayer = serverPlayers[playerIndex];
+    orderedPlayers.push({
+      id: serverPlayer.id,
+      name: serverPlayer.name,
+      type: playerIndex === 0 ? 'human' : 'ai',
+      hand: [],
+      melds: [],
+      discards: [],
+      score: 0,
+      piao: 0,
+      isTing: false
+    });
+  }
+
+  gameState.players = orderedPlayers;
+  console.log('Initialized multiplayer players:', gameState.players);
+}
+
+function enterMultiplayerLobby() {
+  window.location.href = 'lobby.html';
+}
+
+function showToast(message, type = 'info') {
+  const existing = document.getElementById('toastMessage');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'toastMessage';
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: #fff;
+    padding: 15px 30px;
+    border-radius: 10px;
+    font-size: 16px;
+    z-index: 2000;
+    border: 2px solid ${type === 'error' ? '#f44336' : type === 'success' ? '#4caf50' : '#8bc34a'};
+  `;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = 'fadeOut 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 let piaoCountdown = 30;
