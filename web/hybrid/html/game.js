@@ -2546,12 +2546,26 @@ function selectAIDiscardHard(player) {
   const recentChiCards = lastChiMeld && lastChiMeld.type === 'sequence' && lastChiMeld.source === 'chi' 
     ? lastChiMeld.cards.map(c => c.character) 
     : [];
+  const recentChiSentence = lastChiMeld && lastChiMeld.type === 'sequence' && lastChiMeld.source === 'chi'
+    ? lastChiMeld.cards[0].sentence
+    : -1;
+  const lastPengMeld = player.melds && player.melds.length > 0 && player.melds[player.melds.length - 1];
+  const recentPengChar = lastPengMeld && lastPengMeld.type === 'triplet' && lastPengMeld.source === 'peng'
+    ? lastPengMeld.cards[0].character
+    : null;
   
   const scoredCards = player.hand.map((card, index) => {
     let bonus = 0;
     if (recentChiCards.includes(card.character)) {
-      bonus += 500;
-      console.log('困难模式: 保留刚吃牌相关的牌', card.character, '加分500');
+      bonus += 10000;
+      console.log('困难模式: 保护刚吃牌相关的牌', card.character, '加分10000');
+    } else if (card.sentence === recentChiSentence && recentChiSentence > 0) {
+      bonus += 5000;
+      console.log('困难模式: 保护刚吃牌同句的牌', card.character, '加分5000');
+    }
+    if (card.character === recentPengChar) {
+      bonus += 10000;
+      console.log('困难模式: 保护刚碰牌相关的牌', card.character, '加分10000');
     }
     
     return {
@@ -2572,12 +2586,18 @@ function selectAIDiscardMedium(player) {
   const recentChiCards = lastChiMeld && lastChiMeld.type === 'sequence' && lastChiMeld.source === 'chi' 
     ? lastChiMeld.cards.map(c => c.character) 
     : [];
+  const recentChiSentence = lastChiMeld && lastChiMeld.type === 'sequence' && lastChiMeld.source === 'chi'
+    ? lastChiMeld.cards[0].sentence
+    : -1;
   
   const scoredCards = player.hand.map((card, index) => {
     let bonus = 0;
     if (recentChiCards.includes(card.character)) {
-      bonus += 200;
-      console.log('中等模式: 保留刚吃牌相关的牌', card.character, '加分200');
+      bonus += 10000;
+      console.log('中等模式: 保护刚吃牌相关的牌', card.character, '加分10000');
+    } else if (card.sentence === recentChiSentence) {
+      bonus += 5000;
+      console.log('中等模式: 保护刚吃牌同句的牌', card.character, '加分5000');
     }
     
     return {
@@ -3280,7 +3300,11 @@ function evaluateCardExtreme(card, hand, player) {
   }
   
   const remaining = countRemainingCards(card.character);
-  score -= remaining * 45;
+  score -= remaining * 120;
+  
+  const afterDiscardJinZhang = calculateTotalJinZhang(tempHand, melds);
+  const currentJinZhang = calculateTotalJinZhang(hand, melds);
+  score += (currentJinZhang - afterDiscardJinZhang) * 15;
   
   const currentHuCount = calculateHuCount(hand, melds);
   const afterDiscardHuCount = calculateHuCount(tempHand, melds);
@@ -3317,6 +3341,24 @@ function evaluateCardExtreme(card, hand, player) {
     if (!tingResult.isTing) {
       score += 2000;
     }
+    
+    const cardRemaining = countRemainingCards(card.character);
+    if (cardRemaining === 0) {
+      score -= 3000;
+    } else if (cardRemaining <= 1) {
+      score -= 1500;
+    } else if (cardRemaining <= 2) {
+      score -= 500;
+    } else {
+      score += cardRemaining * 200;
+    }
+    
+    const opponents = gameState.players.filter((p, i) => i !== gameState.currentPlayerIndex);
+    const anyOpponentTing = opponents.some(o => o.isTing);
+    if (anyOpponentTing) {
+      const cardDanger = calculateCardDangerScore(card, player);
+      score += cardDanger * 2;
+    }
   }
   
   if (phase === 'late' || phase === 'end') {
@@ -3331,6 +3373,35 @@ function evaluateCardExtreme(card, hand, player) {
     if (sameCount === 1 && card.character !== '上' && card.character !== '福') {
       score -= 100;
     }
+  }
+  
+  const sentenceCardsInHand = hand.filter(c => c.sentence === card.sentence && c.id !== card.id);
+  const hasPairInSentence = sentenceCardsInHand.some(c => c.position !== card.position);
+  if (hasPairInSentence && sameCount === 1) {
+    const missingPos = [0, 1, 2].find(p => {
+      const posCards = sentenceCardsInHand.filter(c => c.position === p);
+      return posCards.length === 0 && p !== card.position;
+    });
+    if (missingPos !== undefined) {
+      const missingChar = getSentenceCharacters(card.sentence)[missingPos];
+      const missingRemaining = countRemainingCards(missingChar);
+      if (missingRemaining > 0) {
+        score -= missingRemaining * 80;
+      }
+    }
+  }
+  
+  const handAnalysis = analyzeHandForTing(hand, melds);
+  const isCardInPair = handAnalysis.pairs && handAnalysis.pairs.some(p => p.character === card.character);
+  const isCardInHalfKao = handAnalysis.halfKaos && handAnalysis.halfKaos.some(hk => 
+    hk.card1 && hk.card1.character === card.character || 
+    hk.card2 && hk.card2.character === card.character
+  );
+  if (isCardInPair) {
+    score -= 300;
+  }
+  if (isCardInHalfKao) {
+    score -= 200;
   }
   
   return score;
@@ -6294,6 +6365,9 @@ function showHuMessage(player, huResult, methodName, huTypeName, score, dianPaoP
   overlay.style.display = 'flex';
   mask.style.display = 'block';
   
+  const playedCardsEl = document.getElementById('playedCards');
+  if (playedCardsEl) playedCardsEl.style.display = 'none';
+  
   // 触发分数变化动画（在弹窗显示后）
   if (scoresBefore) {
     setTimeout(() => {
@@ -6490,10 +6564,17 @@ function closeHuMessage() {
   
   if (overlay) {
     overlay.style.display = 'none';
+    overlay.classList.add('hidden');
     const dealingText = overlay.querySelector('.dealing-text');
     if (dealingText) dealingText.innerHTML = '';
   }
-  if (mask) mask.style.display = 'none';
+  if (mask) {
+    mask.style.display = 'none';
+    mask.classList.add('hidden');
+  }
+  
+  const playedCardsEl = document.getElementById('playedCards');
+  if (playedCardsEl) playedCardsEl.style.display = '';
   
   stopCountdown();
   
@@ -7632,11 +7713,36 @@ function shouldAIChi(player, card) {
     const discardIndex = selectAIDiscardHard(simulatedPlayer);
     const willDiscardCard = afterChiHand[discardIndex];
     
-    if (willDiscardCard && chiCards.some(c => c.character === willDiscardCard.character)) {
+    const allChiCharacters = [card.character, ...chiCards.map(c => c.character)];
+    if (willDiscardCard && allChiCharacters.includes(willDiscardCard.character)) {
       return false;
     }
     
     if (willDiscardCard && willDiscardCard.sentence === card.sentence) {
+      const sameCharInHand = afterChiHand.filter(c => c.character === willDiscardCard.character).length;
+      if (sameCharInHand <= 1) {
+        return false;
+      }
+    }
+    
+    const chiDiscardHand = afterChiHand.filter(c => c.id !== willDiscardCard.id);
+    const chiDiscardXiangTing = calculateXiangTingShu(chiDiscardHand, afterChiMelds);
+    
+    let drawBetterCount = 0;
+    for (const c of ALL_CHARACTERS) {
+      const remaining = countRemainingCards(c);
+      if (remaining <= 0) continue;
+      const cardInfo = createCardByCharacter(c);
+      const drawHand = [...player.hand, { ...cardInfo, id: -1 }];
+      const drawXiangTing = calculateXiangTingShu(drawHand, melds);
+      if (drawXiangTing <= chiDiscardXiangTing) {
+        drawBetterCount += remaining;
+      }
+    }
+    
+    const totalRemaining = gameState.deck ? gameState.deck.length : 0;
+    if (totalRemaining > 0 && drawBetterCount / totalRemaining > 0.4) {
+      console.log('困难模式: 不吃牌，摸牌更优，摸牌更优比例:', (drawBetterCount / totalRemaining * 100).toFixed(1) + '%');
       return false;
     }
     
@@ -8126,6 +8232,40 @@ function shouldAIPeng(player, card) {
     if (dangerScore > 500 && afterPengXiangTing >= currentXiangTing) {
       return false;
     }
+    
+    const simulatedPlayer = { 
+      ...player, 
+      hand: afterPengHandCorrect, 
+      melds: afterPengMelds 
+    };
+    const discardIndex = selectAIDiscardHard(simulatedPlayer);
+    const willDiscardCard = afterPengHandCorrect[discardIndex];
+    
+    if (willDiscardCard && willDiscardCard.character === card.character) {
+      console.log('困难模式: 碰牌后会打出同字牌，不碰');
+      return false;
+    }
+    
+    const pengDiscardHand = afterPengHandCorrect.filter(c => c.id !== willDiscardCard.id);
+    const pengDiscardXiangTing = calculateXiangTingShu(pengDiscardHand, afterPengMelds);
+    
+    let drawBetterCount = 0;
+    for (const c of ALL_CHARACTERS) {
+      const remaining = countRemainingCards(c);
+      if (remaining <= 0) continue;
+      const cardInfo = createCardByCharacter(c);
+      const drawHand = [...player.hand, { ...cardInfo, id: -1 }];
+      const drawXiangTing = calculateXiangTingShu(drawHand, melds);
+      if (drawXiangTing <= pengDiscardXiangTing) {
+        drawBetterCount += remaining;
+      }
+    }
+    
+    const totalRemaining = gameState.deck ? gameState.deck.length : 0;
+    if (totalRemaining > 0 && drawBetterCount / totalRemaining > 0.5) {
+      console.log('困难模式: 不碰牌，摸牌更优，摸牌更优比例:', (drawBetterCount / totalRemaining * 100).toFixed(1) + '%');
+      return false;
+    }
   }
   
   return false;
@@ -8466,6 +8606,19 @@ function closeSettings() {
   }
 }
 
+function exitGame() {
+  closeSettings();
+  if (typeof plus !== 'undefined' && plus.navigator) {
+    plus.navigator.close();
+  } else if (typeof uni !== 'undefined' && uni.navigateBack) {
+    uni.navigateBack({ delta: 1 });
+  } else if (typeof WeixinJSBridge !== 'undefined') {
+    WeixinJSBridge.call('closeWindow');
+  } else {
+    window.close();
+  }
+}
+
 function updateVolume(value) {
   gameSettings.volume = value / 100;
   const valueDisplay = document.getElementById('volumeValue');
@@ -8576,10 +8729,23 @@ function showSettlementPage() {
 function closeSettlement() {
   const settlementPage = document.getElementById('settlementPage');
   settlementPage.classList.remove('show');
+  settlementPage.style.display = 'none';
   
   const messageArea = document.getElementById('messageArea');
   if (messageArea) {
+    messageArea.classList.remove('show');
     messageArea.dataset.liuju = 'false';
+  }
+  
+  const dealingOverlay = document.getElementById('dealingOverlay');
+  const dealingMask = document.getElementById('dealingMask');
+  if (dealingOverlay) {
+    dealingOverlay.classList.add('hidden');
+    dealingOverlay.style.display = 'none';
+  }
+  if (dealingMask) {
+    dealingMask.classList.add('hidden');
+    dealingMask.style.display = 'none';
   }
   
   gameState.roundHistory = [];
@@ -8606,6 +8772,7 @@ function closeSettlement() {
   gameState.canHu = false;
   gameState.skipDraw = false;
   gameState.isDrawing = false;
+  gameState.gameStarted = false;
   
   if (gameState.countdownTimer) {
     clearInterval(gameState.countdownTimer);
@@ -8626,15 +8793,12 @@ function closeSettlement() {
   
   const startScreen = document.getElementById('startScreen');
   const gameContainer = document.querySelector('.game-container');
-  const settlementPageEl = document.getElementById('settlementPage');
   
   startScreen.classList.remove('hidden');
   startScreen.style.display = '';
   startScreen.style.visibility = 'visible';
   
   gameContainer.style.display = 'none';
-  settlementPageEl.style.display = 'none';
-  settlementPageEl.classList.remove('show');
   
   document.getElementById('roundNum').textContent = '1/8';
   

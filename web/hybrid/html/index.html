@@ -1509,6 +1509,25 @@
       color: #fff;
     }
     
+    .btn-exit-game {
+      width: 100%;
+      padding: 0.7rem 0;
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 2px;
+    }
+    
+    .btn-exit-game:active {
+      transform: scale(0.96);
+      opacity: 0.85;
+    }
+    
     .player-avatar-box {
       position: relative;
     }
@@ -2831,6 +2850,9 @@
             <button class="btn btn-secondary" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;" onclick="exportLogsToFile()">导出</button>
             <button class="btn btn-secondary" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;" onclick="clearLogs()">清除</button>
           </div>
+        </div>
+        <div class="setting-item" style="margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.15);">
+          <button class="btn btn-exit-game" onclick="exitGame()">退出游戏</button>
         </div>
       </div>
     </div>
