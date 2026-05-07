@@ -1193,7 +1193,8 @@ let gameState = {
   pausedPiaoCountdown: 0,
   pausedPiaoPlayerIndex: -1,
   isPiaoPhase: false,
-  gameStarted: false
+  gameStarted: false,
+  dealerHasDrawnInitialCard: false
 };
 
 function startTestMode() {
@@ -1720,6 +1721,7 @@ function startRound() {
   gameState.canHu = false;
   gameState.skipDraw = false;
   gameState.isDrawing = false;
+  gameState.dealerHasDrawnInitialCard = false;
   
   if (gameState.countdownTimer) {
     clearInterval(gameState.countdownTimer);
@@ -2178,10 +2180,12 @@ function startTurn() {
   zimoAnnounced = false;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isDealerFirstTurn = gameState.currentPlayerIndex === gameState.dealerIndex && 
-                            currentPlayer.hand.length === 20;
+                            currentPlayer.hand.length === 20 && 
+                            !gameState.dealerHasDrawnInitialCard;
   
   console.log('当前玩家:', currentPlayer.name, '类型:', currentPlayer.type);
   console.log('是否庄家首回合:', isDealerFirstTurn);
+  console.log('庄家初始摸牌状态:', gameState.dealerHasDrawnInitialCard);
   console.log('当前玩家手牌数:', currentPlayer.hand.length);
   console.log('牌堆数量:', gameState.deck.length);
   console.log('当前玩家索引:', gameState.currentPlayerIndex);
@@ -2232,6 +2236,13 @@ function startTurn() {
         gameState.isDrawing = false;
         gameState.isMyTurn = true;
         console.log('摸牌完成，手牌数:', currentPlayer.hand.length);
+        
+        // 标记庄家已完成首次摸牌
+        if (gameState.currentPlayerIndex === gameState.dealerIndex && 
+            currentPlayer.hand.length === 21) {
+          gameState.dealerHasDrawnInitialCard = true;
+          console.log('庄家已完成首次摸牌，标记为true');
+        }
         
         // 更新手牌数量显示
         document.getElementById('myHandCount').textContent = currentPlayer.hand.length;
@@ -2446,7 +2457,8 @@ function processAITurn() {
   
   const player = gameState.players[gameState.currentPlayerIndex];
   const isDealerFirstTurn = gameState.currentPlayerIndex === gameState.dealerIndex && 
-                            player.hand.length === 20;
+                            player.hand.length === 20 && 
+                            !gameState.dealerHasDrawnInitialCard;
   
   if (!gameState.skipDraw && !isDealerFirstTurn && gameState.deck.length > 0) {
     const drawnCard = gameState.deck.pop();
@@ -2473,6 +2485,13 @@ function continueAITurn(player) {
   // 如果已经处理了胡牌，不再继续操作
   if (gameState.isHandlingHu) {
     return;
+  }
+  
+  // 标记庄家已完成首次摸牌
+  if (gameState.currentPlayerIndex === gameState.dealerIndex && 
+      player.hand.length === 21) {
+    gameState.dealerHasDrawnInitialCard = true;
+    console.log('庄家已完成首次摸牌，标记为true');
   }
   
   const tingResult = checkTing(player);
